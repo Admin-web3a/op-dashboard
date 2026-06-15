@@ -541,8 +541,9 @@ new Chart(document.getElementById("overdueChart"),{{
   options:{{...base,maintainAspectRatio:false,plugins:{{...base.plugins,legend:{{display:false}}}}}}
 }});
 
-// Daily capital stacked bar
+// Daily capital grouped bar (% of day total)
 const capColors = {{"$0-5,000":"#eb4d4b","до $5,000":"#f5a623","$5,000-50,000":"#ffd32a","$50,000-100,000":"#6ab04c","$100,000-500,000":"#00cec9","$500,000-1,000,000":"#4f8ef7","$1,000,000+":"#a29bfe","Неизвестно":"#636e72"}};
+const dayTotals = DATA.daily_cap_labels.map((_,i)=>DATA.capital_labels.reduce((s,c)=>s+(DATA.daily_cap_data[c][i]||0),0));
 new Chart(document.getElementById("dailyCapChart"),{{
   type:"bar",
   data:{{
@@ -550,7 +551,7 @@ new Chart(document.getElementById("dailyCapChart"),{{
     datasets:DATA.capital_labels.map(cap=>{{
       return {{
         label:cap,
-        data:DATA.daily_cap_data[cap],
+        data:DATA.daily_cap_data[cap].map((v,i)=>dayTotals[i]?Math.round(v/dayTotals[i]*100):0),
         backgroundColor:capColors[cap]||"#999",
         borderWidth:0,
         borderRadius:2,
@@ -561,11 +562,14 @@ new Chart(document.getElementById("dailyCapChart"),{{
     maintainAspectRatio:false,
     plugins:{{
       legend:{{position:"top",labels:{{color:"#e8eaf0",font:{{size:11}},boxWidth:12,padding:8}}}},
-      tooltip:{{mode:"index",intersect:false}}
+      tooltip:{{
+        mode:"index",intersect:false,
+        callbacks:{{label:function(c){{return ` ${{c.dataset.label}}: ${{c.raw}}%`}}}}
+      }}
     }},
     scales:{{
-      x:{{stacked:true,ticks:{{color:"#e8eaf0"}},grid:{{color:"#1e2a3a"}}}},
-      y:{{stacked:true,beginAtZero:true,ticks:{{color:"#e8eaf0"}},grid:{{color:"#1e2a3a"}}}}
+      x:{{ticks:{{color:"#e8eaf0"}},grid:{{color:"#1e2a3a"}}}},
+      y:{{beginAtZero:true,max:100,ticks:{{color:"#e8eaf0",callback:v=>v+"%"}},grid:{{color:"#1e2a3a"}}}}
     }}
   }}
 }});
