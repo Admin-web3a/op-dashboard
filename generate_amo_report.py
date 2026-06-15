@@ -211,10 +211,26 @@ def build_report():
     for s in sorted_statuses:
         s.pop("_order", None)
 
+    # Daily lead counts from June 6 onwards
+    tz_msk = datetime.timezone(datetime.timedelta(hours=3))
+    start_date = datetime.date(2026, 6, 6)
+    today = datetime.datetime.now(tz_msk).date()
+    daily_counts = {}
+    d = start_date
+    while d <= today:
+        daily_counts[d.strftime("%d.%m")] = 0
+        d += datetime.timedelta(days=1)
+
+    for lead in leads:
+        created_ts = lead.get("created_at")
+        if created_ts:
+            lead_date = datetime.datetime.fromtimestamp(created_ts, tz=tz_msk).date()
+            key = lead_date.strftime("%d.%m")
+            if key in daily_counts:
+                daily_counts[key] += 1
+
     return {
-        "updated_at":       datetime.datetime.now(
-                                datetime.timezone(datetime.timedelta(hours=3))
-                            ).strftime("%d.%m.%Y %H:%M МСК"),
+        "updated_at":       datetime.datetime.now(tz_msk).strftime("%d.%m.%Y %H:%M МСК"),
         "total":            total,
         "total_price":      total_price,
         "group_counts":     dict(group_counts),
@@ -222,6 +238,8 @@ def build_report():
         "managers":         MANAGERS,
         "mgr_viz":          {str(uid): dict(cnts) for uid, cnts in mgr_viz.items()},
         "overdue":          {str(uid): cnt for uid, cnt in overdue.items()},
+        "daily_labels":     list(daily_counts.keys()),
+        "daily_values":     list(daily_counts.values()),
     }
 
 # ── HTML ──────────────────────────────────────────────────────────────────────
@@ -287,20 +305,19 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   <div class="stat"><div class="stat-value">{price}</div><div class="stat-label">Сумма сделок, ₽</div></div>
 </div>
 
+<h2>Лиды по дням (с 6 июня)</h2>
+<div class="chart-card" style="height:200px"><canvas id="dailyChart"></canvas></div>
+
 <h2>Распределение по статусам воронки</h2>
 <div class="chart-card" style="height:420px"><canvas id="funnelChart"></canvas></div>
 
 <h2>Лиды по менеджерам</h2>
-<div class="chart-card" style="height:300px"><canvas id="mgrChart"></canvas></div>
+<div class="chart-card" style="height:600px"><canvas id="mgrChart"></canvas></div>
 
 <div class="grid2" style="margin-top:16px">
   <div>
     <h2>Просроченные задачи по менеджерам</h2>
-    <div class="chart-card" style="height:300px"><canvas id="overdueChart"></canvas></div>
-  </div>
-  <div>
-    <h2>Воронка по группам</h2>
-    <div class="chart-card" style="height:300px"><canvas id="convChart"></canvas></div>
+    <div class="chart-card" style="height:600px"><canvas id="overdueChart"></canvas></div>
   </div>
 </div>
 
@@ -334,6 +351,27 @@ const base = {{
     y:{{ticks:{{color:"#8b8fa8"}},grid:{{color:"#2a2d3a"}}}}
   }}
 }};
+
+// Daily leads chart
+new Chart(document.getElementById("dailyChart"),{{
+  type:"bar",
+  data:{{
+    labels:DATA.daily_labels,
+    datasets:[{{
+      label:"Лидов за день",
+      data:DATA.daily_values,
+      backgroundColor:"#4f8ef7",
+      borderRadius:3,
+    }}]
+  }},
+  options:{{...base,maintainAspectRatio:false,
+    plugins:{{...base.plugins,legend:{{display:false}}}},
+    scales:{{
+      x:{{...base.scales.x,ticks:{{color:"#e8eaf0"}}}},
+      y:{{...base.scales.y,beginAtZero:true}}
+    }}
+  }}
+}});
 
 // Funnel
 const funColors = DATA.sorted_statuses.map(s=>{{
@@ -387,20 +425,6 @@ new Chart(document.getElementById("overdueChart"),{{
   options:{{...base,maintainAspectRatio:false,plugins:{{...base.plugins,legend:{{display:false}}}}}}
 }});
 
-// Conversion funnel
-const gc=DATA.group_counts;
-const convLabels=["В работе","НДЗ","Оффер озвучен","Отл. спрос","Экскурсия","Выст. счет","Продажи"];
-const convVals=[gc.active||0,gc.ndz||0,gc.offer||0,gc.delayed||0,gc.excursion||0,gc.invoiced||0,gc.sale||0];
-const convColors=["#4f8ef7","#f5a623","#7ed6df","#5dade2","#a29bfe","#a29bfe","#6ab04c"];
-new Chart(document.getElementById("convChart"),{{
-  type:"bar",
-  data:{{
-    labels:convLabels,
-    datasets:[{{label:"Лидов",data:convVals,backgroundColor:convColors,borderRadius:3}}]
-  }},
-  options:{{...base,maintainAspectRatio:false,plugins:{{...base.plugins,legend:{{display:false}}}}}}
-}});
-
 // Table
 const tbody=document.getElementById("mgrTable");
 mgrIds.forEach(id=>{{
@@ -437,6 +461,8 @@ def generate_html(report):
         "managers":        {str(k): v for k, v in report["managers"].items()},
         "mgr_viz":         report["mgr_viz"],
         "overdue":         report["overdue"],
+        "daily_labels":    report["daily_labels"],
+        "daily_values":    report["daily_values"],
     }, ensure_ascii=False)
 
     return HTML_TEMPLATE.format(
