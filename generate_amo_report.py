@@ -258,6 +258,37 @@ def build_report():
             if key in daily_counts:
                 daily_counts[key] += 1
 
+    # Custom field IDs for questionnaire fields
+    CAPITAL_FIELD_ID = 1304047
+    READY_FIELD_ID   = 1317111
+
+    # Capital order for display
+    CAPITAL_ORDER = ["$0-5,000", "до $5,000", "$5,000-50,000", "$50,000-100,000",
+                     "$100,000-500,000", "$500,000-1,000,000", "$1,000,000+", "Неизвестно"]
+
+    capital_counts = Counter()
+    ready_counts   = Counter()
+
+    for lead in leads:
+        for cf in (lead.get("custom_fields_values") or []):
+            fid = cf.get("field_id")
+            vals = cf.get("values") or []
+            if fid == CAPITAL_FIELD_ID and vals:
+                capital_counts[vals[0].get("value", "?")] += 1
+            elif fid == READY_FIELD_ID and vals:
+                ready_counts[vals[0].get("value", "?")] += 1
+
+    # Sort capital by predefined order
+    capital_labels = [k for k in CAPITAL_ORDER if k in capital_counts]
+    # Append any unexpected values
+    for k in capital_counts:
+        if k not in capital_labels:
+            capital_labels.append(k)
+    capital_values = [capital_counts[k] for k in capital_labels]
+
+    ready_labels = list(ready_counts.keys())
+    ready_values = [ready_counts[k] for k in ready_labels]
+
     # per-manager detailed group counts for table
     mgr_detail = {}
     for uid, cnts in mgr_viz.items():
@@ -275,6 +306,10 @@ def build_report():
         "daily_labels":     list(daily_counts.keys()),
         "daily_values":     list(daily_counts.values()),
         "mgr_detail":       mgr_detail,
+        "capital_labels":   capital_labels,
+        "capital_values":   capital_values,
+        "ready_labels":     ready_labels,
+        "ready_values":     ready_values,
     }
 
 # ── HTML ──────────────────────────────────────────────────────────────────────
@@ -348,6 +383,17 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
 <h2>Лиды по дням (с 6 июня)</h2>
 <div class="chart-card" style="height:200px"><canvas id="dailyChart"></canvas></div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px;align-items:start">
+  <div>
+    <h2>Капитал клиентов</h2>
+    <div class="chart-card" style="height:320px"><canvas id="capitalChart"></canvas></div>
+  </div>
+  <div>
+    <h2>Готовность присоединиться</h2>
+    <div class="chart-card" style="height:320px"><canvas id="readyChart"></canvas></div>
+  </div>
+</div>
 
 <h2>Распределение по статусам воронки</h2>
 <div class="chart-card" style="height:420px"><canvas id="funnelChart"></canvas></div>
@@ -470,6 +516,52 @@ new Chart(document.getElementById("overdueChart"),{{
   options:{{...base,maintainAspectRatio:false,plugins:{{...base.plugins,legend:{{display:false}}}}}}
 }});
 
+// Capital doughnut
+new Chart(document.getElementById("capitalChart"),{{
+  type:"doughnut",
+  data:{{
+    labels:DATA.capital_labels,
+    datasets:[{{
+      data:DATA.capital_values,
+      backgroundColor:["#eb4d4b","#f5a623","#ffd32a","#6ab04c","#00cec9","#4f8ef7","#a29bfe","#636e72"],
+      borderWidth:0,
+    }}]
+  }},
+  options:{{
+    maintainAspectRatio:false,
+    plugins:{{
+      legend:{{position:"right",labels:{{color:"#e8eaf0",font:{{size:12}},boxWidth:14,padding:10}}}},
+      tooltip:{{callbacks:{{label:function(c){{
+        const total=c.dataset.data.reduce((a,b)=>a+b,0);
+        return ` ${{c.label}}: ${{c.raw}} (${{Math.round(c.raw/total*100)}}%)`;
+      }}}}}}
+    }}
+  }}
+}});
+
+// Ready doughnut
+new Chart(document.getElementById("readyChart"),{{
+  type:"doughnut",
+  data:{{
+    labels:DATA.ready_labels.map(l=>l==="Супер_Я_готов"?"Готов сейчас":l==="Хочу_больше_узнать_про_программу"?"Хочу узнать больше":l),
+    datasets:[{{
+      data:DATA.ready_values,
+      backgroundColor:["#6ab04c","#4f8ef7","#f5a623","#a29bfe"],
+      borderWidth:0,
+    }}]
+  }},
+  options:{{
+    maintainAspectRatio:false,
+    plugins:{{
+      legend:{{position:"right",labels:{{color:"#e8eaf0",font:{{size:12}},boxWidth:14,padding:10}}}},
+      tooltip:{{callbacks:{{label:function(c){{
+        const total=c.dataset.data.reduce((a,b)=>a+b,0);
+        return ` ${{c.label}}: ${{c.raw}} (${{Math.round(c.raw/total*100)}}%)`;
+      }}}}}}
+    }}
+  }}
+}});
+
 // Table
 const tbody=document.getElementById("mgrTable");
 mgrIds.forEach(id=>{{
@@ -514,6 +606,10 @@ def generate_html(report):
         "overdue":         report["overdue"],
         "daily_labels":    report["daily_labels"],
         "daily_values":    report["daily_values"],
+        "capital_labels":  report["capital_labels"],
+        "capital_values":  report["capital_values"],
+        "ready_labels":    report["ready_labels"],
+        "ready_values":    report["ready_values"],
     }, ensure_ascii=False)
 
     active_total = sum(gc.get(g, 0) for g in ("incoming", "new_lead", "om", "in_work", "contact", "qualified"))
