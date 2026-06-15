@@ -406,6 +406,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 <h2>Лиды по дням (с 6 июня)</h2>
 <div class="chart-card" style="height:200px"><canvas id="dailyChart"></canvas></div>
 
+<h2>Лиды по капиталу по дням</h2>
+<div class="chart-card" style="height:260px"><canvas id="dailyCapChart"></canvas></div>
+
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px;align-items:start">
   <div>
     <h2>Капитал клиентов</h2>
@@ -416,9 +419,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <div class="chart-card" style="height:320px"><canvas id="readyChart"></canvas></div>
   </div>
 </div>
-
-<h2>Лиды по капиталу по дням</h2>
-<div class="chart-card" style="height:260px"><canvas id="dailyCapChart"></canvas></div>
 
 <h2>Распределение по статусам воронки</h2>
 <div class="chart-card" style="height:420px"><canvas id="funnelChart"></canvas></div>
