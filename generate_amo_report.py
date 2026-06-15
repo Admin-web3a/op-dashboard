@@ -75,7 +75,7 @@ VIZ_GROUP = {
     "active":      "active",
     "ndz":         "ndz",
     "offer":       "offer",
-    "delayed":     "offer",
+    "delayed":     "delayed",
     "invoiced":    "sale",
     "excursion":   "sale",
     "installment": "sale",
@@ -83,9 +83,23 @@ VIZ_GROUP = {
     "lost":        "lost",
 }
 
-VIZ_LABELS = {"active": "В работе", "ndz": "НДЗ", "offer": "Оффер/Отложен", "sale": "Продажи+", "lost": "Потеряно"}
-VIZ_COLORS = {"active": "#4f8ef7", "ndz": "#f5a623", "offer": "#7ed6df", "sale": "#6ab04c", "lost": "#eb4d4b"}
-VIZ_ORDER  = ["active", "ndz", "offer", "sale", "lost"]
+VIZ_LABELS = {
+    "active":  "В работе",
+    "ndz":     "НДЗ",
+    "offer":   "Оффер озвучен",
+    "delayed": "Отложен",
+    "sale":    "Продажи+",
+    "lost":    "Потеряно",
+}
+VIZ_COLORS = {
+    "active":  "#4f8ef7",
+    "ndz":     "#f5a623",
+    "offer":   "#7ed6df",
+    "delayed": "#a29bfe",
+    "sale":    "#6ab04c",
+    "lost":    "#eb4d4b",
+}
+VIZ_ORDER  = ["active", "ndz", "offer", "delayed", "sale", "lost"]
 
 # ── API ───────────────────────────────────────────────────────────────────────
 
@@ -229,6 +243,11 @@ def build_report():
             if key in daily_counts:
                 daily_counts[key] += 1
 
+    # per-manager detailed group counts for table
+    mgr_detail = {}
+    for uid, cnts in mgr_viz.items():
+        mgr_detail[str(uid)] = dict(cnts)
+
     return {
         "updated_at":       datetime.datetime.now(tz_msk).strftime("%d.%m.%Y %H:%M МСК"),
         "total":            total,
@@ -240,6 +259,7 @@ def build_report():
         "overdue":          {str(uid): cnt for uid, cnt in overdue.items()},
         "daily_labels":     list(daily_counts.keys()),
         "daily_values":     list(daily_counts.values()),
+        "mgr_detail":       mgr_detail,
     }
 
 # ── HTML ──────────────────────────────────────────────────────────────────────
@@ -283,6 +303,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   .tag-active{{background:#1a2a4a;color:var(--accent)}}
   .tag-ndz{{background:#3a2800;color:var(--orange)}}
   .tag-offer{{background:#0a2e30;color:var(--blue)}}
+  .tag-delayed{{background:#2a1a4a;color:#a29bfe}}
   .tag-sale{{background:#1a2e0a;color:var(--green)}}
   .tag-lost{{background:#2e0a0a;color:var(--red)}}
   .num{{text-align:right;font-variant-numeric:tabular-nums}}
@@ -328,7 +349,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <th class="num">Всего</th>
     <th class="num">В работе</th>
     <th class="num">НДЗ</th>
-    <th class="num">Оффер/Отл.</th>
+    <th class="num">Оффер озвучен</th>
+    <th class="num">Отложен</th>
     <th class="num">Продажи+</th>
     <th class="num">Потеряно</th>
     <th class="num">Просрочено</th>
@@ -338,9 +360,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
 <script>
 const DATA = {json_data};
-const VCOLORS = {{active:"#4f8ef7",ndz:"#f5a623",offer:"#7ed6df",sale:"#6ab04c",lost:"#eb4d4b"}};
-const VLABELS = {{active:"В работе",ndz:"НДЗ",offer:"Оффер/Отложен",sale:"Продажи+",lost:"Потеряно"}};
-const VORDER  = ["active","ndz","offer","sale","lost"];
+const VCOLORS = {{active:"#4f8ef7",ndz:"#f5a623",offer:"#7ed6df",delayed:"#a29bfe",sale:"#6ab04c",lost:"#eb4d4b"}};
+const VLABELS = {{active:"В работе",ndz:"НДЗ",offer:"Оффер озвучен",delayed:"Отложен",sale:"Продажи+",lost:"Потеряно"}};
+const VORDER  = ["active","ndz","offer","delayed","sale","lost"];
 function fmt(n){{return(n||0).toLocaleString("ru-RU")}}
 const base = {{
   responsive:true,
@@ -438,6 +460,7 @@ mgrIds.forEach(id=>{{
     <td class="num"><span class="tag tag-active">${{d.active||0}}</span></td>
     <td class="num"><span class="tag tag-ndz">${{d.ndz||0}}</span></td>
     <td class="num"><span class="tag tag-offer">${{d.offer||0}}</span></td>
+    <td class="num"><span class="tag tag-delayed">${{d.delayed||0}}</span></td>
     <td class="num"><span class="tag tag-sale">${{d.sale||0}}</span></td>
     <td class="num"><span class="tag tag-lost">${{d.lost||0}}</span></td>
     <td class="num" style="color:${{ovColor}}">${{ov}}</td>
