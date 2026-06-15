@@ -47,7 +47,7 @@ STATUS_GROUPS = {
     "Отложенный спрос":          "delayed",
     "Выставлен счет":            "invoiced",
     "Экскурсия":                 "excursion",
-    "Внутренняя рассрочка":      "installment",
+    "Внутренняя рассрочка":      "sale",
     "Успешно реализовано":       "sale",
     "Закрыто и не реализовано":  "lost",
 }
@@ -402,7 +402,7 @@ mgrIds.forEach(id=>{{
 
 def generate_html(report):
     gc = report["group_counts"]
-    sales = (gc.get("invoiced", 0) + gc.get("sale", 0))
+    sales = gc.get("sale", 0)
     total = report["total"]
     conv_pct = round(sales / total * 100, 2) if total else 0
     price_fmt = f"{report['total_price']:,}".replace(",", "\u00a0")
