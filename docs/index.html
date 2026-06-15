@@ -50,7 +50,7 @@
 </head>
 <body>
 <h1>ОП Dashboard — Анкета перезаписи 06.2026</h1>
-<p class="meta">Источник: amoCRM simmihur &nbsp;·&nbsp; Обновлено: 15.06.2026 23:39 МСК</p>
+<p class="meta">Источник: amoCRM simmihur &nbsp;·&nbsp; Обновлено: 15.06.2026 23:45 МСК</p>
 
 <div class="stats">
   <div class="stat"><div class="stat-value">1 280</div><div class="stat-label">Всего лидов</div></div>
@@ -78,6 +78,9 @@
     <div class="chart-card" style="height:320px"><canvas id="readyChart"></canvas></div>
   </div>
 </div>
+
+<h2>Лиды по капиталу по дням</h2>
+<div class="chart-card" style="height:260px"><canvas id="dailyCapChart"></canvas></div>
 
 <h2>Распределение по статусам воронки</h2>
 <div class="chart-card" style="height:420px"><canvas id="funnelChart"></canvas></div>
@@ -112,7 +115,7 @@
 </div>
 
 <script>
-const DATA = {"sorted_statuses": [{"name": "Входящий чекин", "count": 177, "group": "incoming", "pipeline": "Основная воронка ОП"}, {"name": "ОМ назначен чекин", "count": 198, "group": "incoming", "pipeline": "Основная воронка ОП"}, {"name": "Новый лид", "count": 154, "group": "new_lead", "pipeline": "Основная воронка ОП"}, {"name": "ом назначен", "count": 7, "group": "om", "pipeline": "Основная воронка ОП"}, {"name": "Взято в работу", "count": 187, "group": "in_work", "pipeline": "Основная воронка ОП"}, {"name": "НДЗ", "count": 287, "group": "ndz", "pipeline": "Основная воронка ОП"}, {"name": "Контакт установлен", "count": 66, "group": "contact", "pipeline": "Основная воронка ОП"}, {"name": "Квалифицирован", "count": 26, "group": "qualified", "pipeline": "Основная воронка ОП"}, {"name": "Экскурсия", "count": 1, "group": "excursion", "pipeline": "Основная воронка ОП"}, {"name": "Оффер озвучен", "count": 29, "group": "offer", "pipeline": "Основная воронка ОП"}, {"name": "Отложенный спрос", "count": 31, "group": "delayed", "pipeline": "Основная воронка ОП"}, {"name": "Выставлен счет", "count": 2, "group": "invoiced", "pipeline": "Основная воронка ОП"}, {"name": "Внутренняя рассрочка", "count": 2, "group": "sale", "pipeline": "Основная воронка ОП"}, {"name": "Закрыто и не реализовано", "count": 113, "group": "lost", "pipeline": "Мини Курс"}], "group_counts": {"offer": 29, "ndz": 287, "new_lead": 154, "contact": 66, "in_work": 187, "incoming": 375, "delayed": 31, "qualified": 26, "lost": 113, "invoiced": 2, "om": 7, "sale": 2, "excursion": 1}, "managers": {"12377210": "Никита Саламатин", "11176694": "Наталья", "6461602": "Зверева Елена", "11181290": "Сергей", "9948090": "Денис Криницын", "11068965": "Максим Лисевский", "10293970": "Влад", "12738086": "Кирилл", "11356530": "Денис"}, "mgr_viz": {"10293970": {"offer": 4, "contact": 17, "ndz": 28, "in_work": 15, "delayed": 2, "sale": 1, "lost": 1}, "6461602": {"ndz": 45, "contact": 15, "offer": 4, "qualified": 8, "incoming": 61, "lost": 3, "in_work": 1, "delayed": 1}, "11068965": {"ndz": 35, "sale": 1, "offer": 4, "incoming": 12, "in_work": 14, "contact": 2, "lost": 1}, "9948090": {"in_work": 16, "contact": 11, "offer": 5, "lost": 1, "ndz": 37, "qualified": 1}, "11176694": {"incoming": 38, "ndz": 48, "contact": 6, "in_work": 39, "offer": 2, "delayed": 2, "sale": 1, "lost": 2, "qualified": 6}, "11181290": {"incoming": 71, "in_work": 14, "ndz": 28, "delayed": 3, "lost": 4, "qualified": 5, "offer": 3, "contact": 3}, "12377210": {"incoming": 4, "in_work": 74, "delayed": 23, "sale": 2, "lost": 21, "qualified": 6, "ndz": 21, "contact": 5, "offer": 5}, "11356530": {"in_work": 2, "incoming": 25, "contact": 4, "ndz": 5, "lost": 3}, "12738086": {"contact": 3, "in_work": 9, "lost": 5, "ndz": 40, "offer": 2}}, "overdue": {"11356530": 64, "11176694": 15, "12738086": 15, "11181290": 17, "11068965": 39, "9948090": 3, "12377210": 2}, "daily_labels": ["06.06", "07.06", "08.06", "09.06", "10.06", "11.06", "12.06", "13.06", "14.06", "15.06"], "daily_values": [141, 165, 133, 55, 151, 93, 73, 54, 194, 195], "capital_labels": ["$0-5,000", "до $5,000", "$5,000-50,000", "$50,000-100,000", "$100,000-500,000", "$500,000-1,000,000", "$1,000,000+", "Неизвестно"], "capital_values": [4, 447, 443, 122, 50, 9, 6, 4], "ready_labels": ["Супер_Я_готов", "Хочу_больше_узнать_про_программу"], "ready_values": [219, 710]};
+const DATA = {"sorted_statuses": [{"name": "Входящий чекин", "count": 177, "group": "incoming", "pipeline": "Основная воронка ОП"}, {"name": "ОМ назначен чекин", "count": 198, "group": "incoming", "pipeline": "Основная воронка ОП"}, {"name": "Новый лид", "count": 154, "group": "new_lead", "pipeline": "Основная воронка ОП"}, {"name": "ом назначен", "count": 7, "group": "om", "pipeline": "Основная воронка ОП"}, {"name": "Взято в работу", "count": 187, "group": "in_work", "pipeline": "Основная воронка ОП"}, {"name": "НДЗ", "count": 287, "group": "ndz", "pipeline": "Основная воронка ОП"}, {"name": "Контакт установлен", "count": 66, "group": "contact", "pipeline": "Основная воронка ОП"}, {"name": "Квалифицирован", "count": 26, "group": "qualified", "pipeline": "Основная воронка ОП"}, {"name": "Экскурсия", "count": 1, "group": "excursion", "pipeline": "Основная воронка ОП"}, {"name": "Оффер озвучен", "count": 29, "group": "offer", "pipeline": "Основная воронка ОП"}, {"name": "Отложенный спрос", "count": 31, "group": "delayed", "pipeline": "Основная воронка ОП"}, {"name": "Выставлен счет", "count": 2, "group": "invoiced", "pipeline": "Основная воронка ОП"}, {"name": "Внутренняя рассрочка", "count": 2, "group": "sale", "pipeline": "Основная воронка ОП"}, {"name": "Закрыто и не реализовано", "count": 113, "group": "lost", "pipeline": "Мини Курс"}], "group_counts": {"offer": 29, "ndz": 287, "new_lead": 154, "contact": 66, "in_work": 187, "incoming": 375, "delayed": 31, "qualified": 26, "lost": 113, "invoiced": 2, "om": 7, "sale": 2, "excursion": 1}, "managers": {"12377210": "Никита Саламатин", "11176694": "Наталья", "6461602": "Зверева Елена", "11181290": "Сергей", "9948090": "Денис Криницын", "11068965": "Максим Лисевский", "10293970": "Влад", "12738086": "Кирилл", "11356530": "Денис"}, "mgr_viz": {"10293970": {"offer": 4, "contact": 17, "ndz": 28, "in_work": 15, "delayed": 2, "sale": 1, "lost": 1}, "6461602": {"ndz": 45, "contact": 15, "offer": 4, "qualified": 8, "incoming": 61, "lost": 3, "in_work": 1, "delayed": 1}, "11068965": {"ndz": 35, "sale": 1, "offer": 4, "incoming": 12, "in_work": 14, "contact": 2, "lost": 1}, "9948090": {"in_work": 16, "contact": 11, "offer": 5, "lost": 1, "ndz": 37, "qualified": 1}, "11176694": {"incoming": 38, "ndz": 48, "contact": 6, "in_work": 39, "offer": 2, "delayed": 2, "sale": 1, "lost": 2, "qualified": 6}, "11181290": {"incoming": 71, "in_work": 14, "ndz": 28, "delayed": 3, "lost": 4, "qualified": 5, "offer": 3, "contact": 3}, "12377210": {"incoming": 4, "in_work": 74, "delayed": 23, "sale": 2, "lost": 21, "qualified": 6, "ndz": 21, "contact": 5, "offer": 5}, "11356530": {"in_work": 2, "incoming": 25, "contact": 4, "ndz": 5, "lost": 3}, "12738086": {"contact": 3, "in_work": 9, "lost": 5, "ndz": 40, "offer": 2}}, "overdue": {"11356530": 64, "11176694": 15, "12738086": 15, "11181290": 17, "11068965": 39, "9948090": 3, "12377210": 2}, "daily_labels": ["06.06", "07.06", "08.06", "09.06", "10.06", "11.06", "12.06", "13.06", "14.06", "15.06"], "daily_values": [141, 165, 133, 55, 151, 93, 73, 54, 194, 195], "capital_labels": ["$0-5,000", "до $5,000", "$5,000-50,000", "$50,000-100,000", "$100,000-500,000", "$500,000-1,000,000", "$1,000,000+", "Неизвестно"], "capital_values": [4, 447, 443, 122, 50, 9, 6, 4], "daily_cap_labels": ["06.06", "07.06", "08.06", "09.06", "10.06", "11.06", "12.06", "13.06", "14.06", "15.06"], "daily_cap_data": {"$0-5,000": [0, 0, 1, 1, 1, 0, 0, 0, 0, 0], "до $5,000": [37, 61, 45, 19, 66, 37, 30, 22, 53, 69], "$5,000-50,000": [58, 70, 49, 22, 51, 33, 18, 13, 55, 66], "$50,000-100,000": [19, 19, 14, 5, 5, 8, 2, 3, 24, 19], "$100,000-500,000": [11, 4, 7, 1, 6, 4, 3, 5, 3, 6], "$500,000-1,000,000": [2, 0, 0, 2, 1, 0, 0, 0, 2, 1], "$1,000,000+": [3, 0, 0, 1, 1, 0, 0, 0, 0, 1], "Неизвестно": [0, 0, 1, 0, 0, 1, 0, 0, 1, 0]}, "ready_labels": ["Супер_Я_готов", "Хочу_больше_узнать_про_программу"], "ready_values": [219, 710]};
 const VCOLORS = {incoming:"#74b9ff",new_lead:"#0984e3",om:"#6c5ce7",in_work:"#00cec9",contact:"#ffd32a",qualified:"#ff6b81",ndz:"#f5a623",offer:"#7ed6df",delayed:"#a29bfe",sale:"#6ab04c",lost:"#eb4d4b"};
 const VLABELS = {incoming:"Входящие",new_lead:"Новый лид",om:"ОМ назначен",in_work:"Взято в работу",contact:"Контакт установлен",qualified:"Квалифицирован",ndz:"НДЗ",offer:"Оффер озвучен",delayed:"Отложен",sale:"Продажи+",lost:"Потеряно"};
 const VORDER  = ["incoming","new_lead","om","in_work","contact","qualified","ndz","offer","delayed","sale","lost"];
@@ -198,6 +201,35 @@ new Chart(document.getElementById("overdueChart"),{
     datasets:[{label:"Просрочено",data:ovIds.map(id=>DATA.overdue[id]),backgroundColor:"#eb4d4b",borderRadius:3}]
   },
   options:{...base,maintainAspectRatio:false,plugins:{...base.plugins,legend:{display:false}}}
+});
+
+// Daily capital stacked bar
+const capColors = {"$0-5,000":"#eb4d4b","до $5,000":"#f5a623","$5,000-50,000":"#ffd32a","$50,000-100,000":"#6ab04c","$100,000-500,000":"#00cec9","$500,000-1,000,000":"#4f8ef7","$1,000,000+":"#a29bfe","Неизвестно":"#636e72"};
+new Chart(document.getElementById("dailyCapChart"),{
+  type:"bar",
+  data:{
+    labels:DATA.daily_cap_labels,
+    datasets:DATA.capital_labels.map(cap=>{
+      return {
+        label:cap,
+        data:DATA.daily_cap_data[cap],
+        backgroundColor:capColors[cap]||"#999",
+        borderWidth:0,
+        borderRadius:2,
+      };
+    })
+  },
+  options:{
+    maintainAspectRatio:false,
+    plugins:{
+      legend:{position:"top",labels:{color:"#e8eaf0",font:{size:11},boxWidth:12,padding:8}},
+      tooltip:{mode:"index",intersect:false}
+    },
+    scales:{
+      x:{stacked:true,ticks:{color:"#e8eaf0"},grid:{color:"#1e2a3a"}},
+      y:{stacked:true,beginAtZero:true,ticks:{color:"#e8eaf0"},grid:{color:"#1e2a3a"}}
+    }
+  }
 });
 
 // Capital doughnut

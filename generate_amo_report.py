@@ -268,23 +268,43 @@ def build_report():
 
     capital_counts = Counter()
     ready_counts   = Counter()
+    # daily capital breakdown: {date_key: {capital_val: count}}
+    daily_capital  = {d: Counter() for d in daily_counts}
 
     for lead in leads:
+        cap_val = None
+        rdy_val = None
         for cf in (lead.get("custom_fields_values") or []):
-            fid = cf.get("field_id")
+            fid  = cf.get("field_id")
             vals = cf.get("values") or []
             if fid == CAPITAL_FIELD_ID and vals:
-                capital_counts[vals[0].get("value", "?")] += 1
+                cap_val = vals[0].get("value", "?")
             elif fid == READY_FIELD_ID and vals:
-                ready_counts[vals[0].get("value", "?")] += 1
+                rdy_val = vals[0].get("value", "?")
+        if cap_val:
+            capital_counts[cap_val] += 1
+            created_ts = lead.get("created_at")
+            if created_ts:
+                lead_date = datetime.datetime.fromtimestamp(created_ts, tz=tz_msk).date()
+                day_key = lead_date.strftime("%d.%m")
+                if day_key in daily_capital:
+                    daily_capital[day_key][cap_val] += 1
+        if rdy_val:
+            ready_counts[rdy_val] += 1
 
     # Sort capital by predefined order
     capital_labels = [k for k in CAPITAL_ORDER if k in capital_counts]
-    # Append any unexpected values
     for k in capital_counts:
         if k not in capital_labels:
             capital_labels.append(k)
     capital_values = [capital_counts[k] for k in capital_labels]
+
+    # Daily capital: list of values per capital tier, aligned to daily_labels
+    daily_cap_labels = list(daily_counts.keys())
+    daily_cap_data   = {
+        cap: [daily_capital[d].get(cap, 0) for d in daily_cap_labels]
+        for cap in capital_labels
+    }
 
     ready_labels = list(ready_counts.keys())
     ready_values = [ready_counts[k] for k in ready_labels]
@@ -308,6 +328,8 @@ def build_report():
         "mgr_detail":       mgr_detail,
         "capital_labels":   capital_labels,
         "capital_values":   capital_values,
+        "daily_cap_labels": daily_cap_labels,
+        "daily_cap_data":   daily_cap_data,
         "ready_labels":     ready_labels,
         "ready_values":     ready_values,
     }
@@ -394,6 +416,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <div class="chart-card" style="height:320px"><canvas id="readyChart"></canvas></div>
   </div>
 </div>
+
+<h2>Лиды по капиталу по дням</h2>
+<div class="chart-card" style="height:260px"><canvas id="dailyCapChart"></canvas></div>
 
 <h2>Распределение по статусам воронки</h2>
 <div class="chart-card" style="height:420px"><canvas id="funnelChart"></canvas></div>
@@ -516,6 +541,35 @@ new Chart(document.getElementById("overdueChart"),{{
   options:{{...base,maintainAspectRatio:false,plugins:{{...base.plugins,legend:{{display:false}}}}}}
 }});
 
+// Daily capital stacked bar
+const capColors = {{"$0-5,000":"#eb4d4b","до $5,000":"#f5a623","$5,000-50,000":"#ffd32a","$50,000-100,000":"#6ab04c","$100,000-500,000":"#00cec9","$500,000-1,000,000":"#4f8ef7","$1,000,000+":"#a29bfe","Неизвестно":"#636e72"}};
+new Chart(document.getElementById("dailyCapChart"),{{
+  type:"bar",
+  data:{{
+    labels:DATA.daily_cap_labels,
+    datasets:DATA.capital_labels.map(cap=>{{
+      return {{
+        label:cap,
+        data:DATA.daily_cap_data[cap],
+        backgroundColor:capColors[cap]||"#999",
+        borderWidth:0,
+        borderRadius:2,
+      }};
+    }})
+  }},
+  options:{{
+    maintainAspectRatio:false,
+    plugins:{{
+      legend:{{position:"top",labels:{{color:"#e8eaf0",font:{{size:11}},boxWidth:12,padding:8}}}},
+      tooltip:{{mode:"index",intersect:false}}
+    }},
+    scales:{{
+      x:{{stacked:true,ticks:{{color:"#e8eaf0"}},grid:{{color:"#1e2a3a"}}}},
+      y:{{stacked:true,beginAtZero:true,ticks:{{color:"#e8eaf0"}},grid:{{color:"#1e2a3a"}}}}
+    }}
+  }}
+}});
+
 // Capital doughnut
 new Chart(document.getElementById("capitalChart"),{{
   type:"doughnut",
@@ -608,6 +662,8 @@ def generate_html(report):
         "daily_values":    report["daily_values"],
         "capital_labels":  report["capital_labels"],
         "capital_values":  report["capital_values"],
+        "daily_cap_labels": report["daily_cap_labels"],
+        "daily_cap_data":   report["daily_cap_data"],
         "ready_labels":    report["ready_labels"],
         "ready_values":    report["ready_values"],
     }, ensure_ascii=False)
