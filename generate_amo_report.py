@@ -267,7 +267,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 <div class="chart-card"><canvas id="funnelChart" height="340"></canvas></div>
 
 <h2>Лиды по менеджерам</h2>
-<div class="chart-card"><canvas id="mgrChart" height="260"></canvas></div>
+<div class="chart-card" style="height:240px"><canvas id="mgrChart"></canvas></div>
 
 <div class="grid2" style="margin-top:16px">
   <div>
@@ -346,7 +346,7 @@ new Chart(document.getElementById("mgrChart"),{{
       backgroundColor:VCOLORS[g],borderRadius:2
     }}))
   }},
-  options:{{...base,scales:{{
+  options:{{...base,maintainAspectRatio:false,scales:{{
     x:{{...base.scales.x,stacked:true}},
     y:{{...base.scales.y,stacked:true}}
   }}}}
