@@ -291,16 +291,16 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 <div class="chart-card" style="height:420px"><canvas id="funnelChart"></canvas></div>
 
 <h2>Лиды по менеджерам</h2>
-<div class="chart-card" style="height:240px"><canvas id="mgrChart"></canvas></div>
+<div class="chart-card" style="height:300px"><canvas id="mgrChart"></canvas></div>
 
 <div class="grid2" style="margin-top:16px">
   <div>
     <h2>Просроченные задачи по менеджерам</h2>
-    <div class="chart-card"><canvas id="overdueChart" height="240"></canvas></div>
+    <div class="chart-card" style="height:300px"><canvas id="overdueChart"></canvas></div>
   </div>
   <div>
     <h2>Воронка по группам</h2>
-    <div class="chart-card"><canvas id="convChart" height="240"></canvas></div>
+    <div class="chart-card" style="height:300px"><canvas id="convChart"></canvas></div>
   </div>
 </div>
 
@@ -384,7 +384,7 @@ new Chart(document.getElementById("overdueChart"),{{
     labels:ovIds.map(id=>DATA.managers[id]||id),
     datasets:[{{label:"Просрочено",data:ovIds.map(id=>DATA.overdue[id]),backgroundColor:"#eb4d4b",borderRadius:3}}]
   }},
-  options:{{...base,plugins:{{...base.plugins,legend:{{display:false}}}}}}
+  options:{{...base,maintainAspectRatio:false,plugins:{{...base.plugins,legend:{{display:false}}}}}}
 }});
 
 // Conversion funnel
@@ -398,7 +398,7 @@ new Chart(document.getElementById("convChart"),{{
     labels:convLabels,
     datasets:[{{label:"Лидов",data:convVals,backgroundColor:convColors,borderRadius:3}}]
   }},
-  options:{{...base,plugins:{{...base.plugins,legend:{{display:false}}}}}}
+  options:{{...base,maintainAspectRatio:false,plugins:{{...base.plugins,legend:{{display:false}}}}}}
 }});
 
 // Table
