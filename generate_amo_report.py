@@ -53,6 +53,24 @@ STATUS_GROUPS = {
 }
 
 # Для менеджерских стэк-баров объединяем в 5 визуальных групп
+FUNNEL_ORDER = [
+    "Входящий чекин",
+    "ОМ назначен чекин",
+    "Новый лид",
+    "ом назначен",
+    "Взято в работу",
+    "НДЗ",
+    "Контакт установлен",
+    "Квалифицирован",
+    "Экскурсия",
+    "Оффер озвучен",
+    "Отложенный спрос",
+    "Выставлен счет",
+    "Внутренняя рассрочка",
+    "Успешно реализовано",
+    "Закрыто и не реализовано",
+]
+
 VIZ_GROUP = {
     "active":      "active",
     "ndz":         "ndz",
@@ -176,16 +194,22 @@ def build_report():
     print("Fetching overdue tasks…")
     overdue = fetch_overdue_tasks()
 
-    # Sorted status list for funnel chart
-    sorted_statuses = []
-    for sid, cnt in status_counts.most_common():
+    # Sorted status list for funnel chart — fixed funnel order
+    name_to_pos = {name: i for i, name in enumerate(FUNNEL_ORDER)}
+    status_list = []
+    for sid, cnt in status_counts.items():
         info = statuses.get(sid, {})
-        sorted_statuses.append({
-            "name":     info.get("name", f"?({sid})"),
+        name = info.get("name", f"?({sid})")
+        status_list.append({
+            "name":     name,
             "count":    cnt,
             "group":    info.get("group", "active"),
             "pipeline": info.get("pipeline", ""),
+            "_order":   name_to_pos.get(name, 999),
         })
+    sorted_statuses = sorted(status_list, key=lambda x: x["_order"])
+    for s in sorted_statuses:
+        s.pop("_order", None)
 
     return {
         "updated_at":       datetime.datetime.now(
@@ -264,7 +288,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 </div>
 
 <h2>Распределение по статусам воронки</h2>
-<div class="chart-card"><canvas id="funnelChart" height="340"></canvas></div>
+<div class="chart-card" style="height:420px"><canvas id="funnelChart"></canvas></div>
 
 <h2>Лиды по менеджерам</h2>
 <div class="chart-card" style="height:240px"><canvas id="mgrChart"></canvas></div>
@@ -324,9 +348,9 @@ new Chart(document.getElementById("funnelChart"),{{
     datasets:[{{label:"Сделок",data:DATA.sorted_statuses.map(s=>s.count),
                backgroundColor:funColors,borderRadius:3}}]
   }},
-  options:{{...base,indexAxis:"y",
+  options:{{...base,indexAxis:"y",maintainAspectRatio:false,
     plugins:{{...base.plugins,legend:{{display:false}}}},
-    scales:{{x:{{...base.scales.x}},y:{{ticks:{{color:"#e8eaf0",font:{{size:12}}}},grid:{{color:"#2a2d3a"}}}}}}
+    scales:{{x:{{...base.scales.x}},y:{{ticks:{{color:"#e8eaf0",font:{{size:11}}}},grid:{{color:"#2a2d3a"}}}}}}
   }}
 }});
 
