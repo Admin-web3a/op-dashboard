@@ -165,6 +165,62 @@ def fetch_filtered_leads(statuses):
         page += 1
     return filtered
 
+# Funnel position for cumulative conversion (higher = further in funnel, 0 = excluded)
+FUNNEL_POS = {
+    "incoming":  1,
+    "new_lead":  2,
+    "om":        3,
+    "in_work":   4,   # Взято в работу  ← Stage A
+    "contact":   5,   # Контакт установлен ← Stage B
+    "qualified": 6,
+    "offer":     7,
+    "delayed":   7,
+    "invoiced":  8,
+    "excursion": 8,
+    "sale":      9,
+    "ndz":       0,   # excluded: не является прогрессом
+    "lost":      0,   # excluded
+}
+
+def compute_conversion_by_day(leads, statuses, tz_msk, start_date, today):
+    """Cumulative conversion Взято→Контакт grouped by lead creation date.
+    A lead is counted as 'reached stage X' if its current status has funnel
+    position >= X (assumes monotone progression, matching the screenshot's note).
+    """
+    day_vzv = Counter()   # date -> leads that reached "Взято в работу" or higher
+    day_kon = Counter()   # date -> leads that reached "Контакт установлен" or higher
+
+    for lead in leads:
+        grp = statuses.get(lead.get("status_id"), {}).get("group", "active")
+        pos = FUNNEL_POS.get(grp, 0)
+        if pos < 4:          # didn't reach "Взято в работу"
+            continue
+        created_ts = lead.get("created_at")
+        if not created_ts:
+            continue
+        lead_date = datetime.datetime.fromtimestamp(created_ts, tz=tz_msk).date()
+        day_key = lead_date.strftime("%d.%m")
+        # Only show dates from start_date onwards
+        if lead_date < start_date or lead_date > today:
+            continue
+        day_vzv[day_key] += 1
+        if pos >= 5:         # reached "Контакт установлен" or higher
+            day_kon[day_key] += 1
+
+    all_dates = []
+    d = start_date
+    while d <= today:
+        all_dates.append(d.strftime("%d.%m"))
+        d += datetime.timedelta(days=1)
+
+    vzv_vals = [day_vzv.get(d, 0) for d in all_dates]
+    kon_pct  = [
+        round(day_kon.get(d, 0) / day_vzv[d] * 100) if day_vzv.get(d) else 0
+        for d in all_dates
+    ]
+    return all_dates, vzv_vals, kon_pct
+
+
 def fetch_overdue_tasks():
     now_ts = int(datetime.datetime.utcnow().timestamp())
     try:
@@ -222,6 +278,12 @@ def build_report():
 
     print("Fetching overdue tasks…")
     overdue = fetch_overdue_tasks()
+
+    print("Computing conversion (Взято → Контакт) by creation date…")
+    _tz_msk     = datetime.timezone(datetime.timedelta(hours=3))
+    _start_date = datetime.date(2026, 6, 6)
+    _today      = datetime.datetime.now(_tz_msk).date()
+    conv_dates, conv_vzv, conv_pct = compute_conversion_by_day(leads, statuses, _tz_msk, _start_date, _today)
 
     # Sorted status list for funnel chart — fixed funnel order
     name_to_pos = {name: i for i, name in enumerate(FUNNEL_ORDER)}
@@ -332,6 +394,9 @@ def build_report():
         "daily_cap_data":   daily_cap_data,
         "ready_labels":     ready_labels,
         "ready_values":     ready_values,
+        "conv_dates":       conv_dates,
+        "conv_vzv":         conv_vzv,
+        "conv_pct":         conv_pct,
     }
 
 # ── HTML ──────────────────────────────────────────────────────────────────────
@@ -422,6 +487,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
 <h2>Распределение по статусам воронки</h2>
 <div class="chart-card" style="height:420px"><canvas id="funnelChart"></canvas></div>
+
+<h2>Конверсия: Взято в работу → Контакт установлен</h2>
+<div class="chart-card" style="height:320px"><canvas id="convFunnelChart"></canvas></div>
 
 <h2>Лиды по менеджерам</h2>
 <div class="chart-card" style="height:600px"><canvas id="mgrChart"></canvas></div>
@@ -574,6 +642,68 @@ new Chart(document.getElementById("dailyCapChart"),{{
   }}
 }});
 
+// Conversion funnel chart: bar (взято в работу) + line (% конверсии)
+new Chart(document.getElementById("convFunnelChart"),{{
+  data:{{
+    labels:DATA.conv_dates,
+    datasets:[
+      {{
+        type:"bar",
+        label:"Взято в работу",
+        data:DATA.conv_vzv,
+        backgroundColor:"#00cec9",
+        borderRadius:3,
+        yAxisID:"yCount",
+        order:2,
+      }},
+      {{
+        type:"line",
+        label:"% в Контакт установлен",
+        data:DATA.conv_pct,
+        borderColor:"#ffd32a",
+        backgroundColor:"transparent",
+        pointBackgroundColor:"#ffd32a",
+        pointRadius:4,
+        tension:0.3,
+        yAxisID:"yPct",
+        order:1,
+        datalabels:{{display:true}},
+      }}
+    ]
+  }},
+  options:{{
+    maintainAspectRatio:false,
+    interaction:{{mode:"index",intersect:false}},
+    plugins:{{
+      legend:{{labels:{{color:"#e8eaf0"}}}},
+      tooltip:{{callbacks:{{
+        label:function(c){{
+          return c.dataset.yAxisID==="yPct"
+            ? ` ${{c.dataset.label}}: ${{c.raw}}%`
+            : ` ${{c.dataset.label}}: ${{c.raw}}`;
+        }}
+      }}}}
+    }},
+    scales:{{
+      x:{{ticks:{{color:"#e8eaf0"}},grid:{{color:"#1e2a3a"}}}},
+      yCount:{{
+        position:"left",
+        beginAtZero:true,
+        ticks:{{color:"#e8eaf0"}},
+        grid:{{color:"#1e2a3a"}},
+        title:{{display:true,text:"Взято в работу",color:"#00cec9"}},
+      }},
+      yPct:{{
+        position:"right",
+        min:0,max:100,
+        ticks:{{color:"#ffd32a",callback:v=>v+"%"}},
+        grid:{{drawOnChartArea:false}},
+        title:{{display:true,text:"Конверсия %",color:"#ffd32a"}},
+      }}
+    }}
+  }}
+}});
+
 // Capital doughnut
 new Chart(document.getElementById("capitalChart"),{{
   type:"doughnut",
@@ -670,6 +800,9 @@ def generate_html(report):
         "daily_cap_data":   report["daily_cap_data"],
         "ready_labels":    report["ready_labels"],
         "ready_values":    report["ready_values"],
+        "conv_dates":      report["conv_dates"],
+        "conv_vzv":        report["conv_vzv"],
+        "conv_pct":        report["conv_pct"],
     }, ensure_ascii=False)
 
     active_total = sum(gc.get(g, 0) for g in ("incoming", "new_lead", "om", "in_work", "contact", "qualified"))
