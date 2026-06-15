@@ -50,7 +50,7 @@
 </head>
 <body>
 <h1>ОП Dashboard — Анкета перезаписи 06.2026</h1>
-<p class="meta">Источник: amoCRM simmihur &nbsp;·&nbsp; Обновлено: 15.06.2026 19:45 МСК</p>
+<p class="meta">Источник: amoCRM simmihur &nbsp;·&nbsp; Обновлено: 15.06.2026 19:47 МСК</p>
 
 <div class="stats">
   <div class="stat"><div class="stat-value">1 215</div><div class="stat-label">Всего лидов</div></div>
@@ -71,38 +71,38 @@
 <h2>Распределение по статусам воронки</h2>
 <div class="chart-card" style="height:420px"><canvas id="funnelChart"></canvas></div>
 
-<h2>Лиды по менеджерам</h2>
-<div class="chart-card" style="height:600px"><canvas id="mgrChart"></canvas></div>
-
-<div style="display:grid;grid-template-columns:1fr 2fr;gap:16px;margin-top:16px;align-items:start">
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px;align-items:start">
   <div>
     <h2>Просроченные задачи по менеджерам</h2>
     <div class="chart-card" style="height:600px"><canvas id="overdueChart"></canvas></div>
   </div>
   <div>
-    <h2>Детализация по менеджерам</h2>
-    <div class="chart-card" style="overflow-x:auto;padding:0">
-      <table style="margin:0;border-radius:0">
-        <thead><tr>
-          <th>Менеджер</th>
-          <th class="num">Всего</th>
-          <th class="num">Входящие</th>
-          <th class="num">Новый лид</th>
-          <th class="num">ОМ назначен</th>
-          <th class="num">Взято в работу</th>
-          <th class="num">Контакт уст.</th>
-          <th class="num">Квалифицирован</th>
-          <th class="num">НДЗ</th>
-          <th class="num">Оффер озвучен</th>
-          <th class="num">Отложен</th>
-          <th class="num">Продажи+</th>
-          <th class="num">Потеряно</th>
-          <th class="num">Просрочено</th>
-        </tr></thead>
-        <tbody id="mgrTable"></tbody>
-      </table>
-    </div>
+    <h2>Лиды по менеджерам</h2>
+    <div class="chart-card" style="height:600px"><canvas id="mgrChart"></canvas></div>
   </div>
+</div>
+
+<h2>Детализация по менеджерам</h2>
+<div style="overflow-x:auto">
+<table>
+  <thead><tr>
+    <th>Менеджер</th>
+    <th class="num">Всего</th>
+    <th class="num">Входящие</th>
+    <th class="num">Новый лид</th>
+    <th class="num">ОМ назначен</th>
+    <th class="num">Взято в работу</th>
+    <th class="num">Контакт уст.</th>
+    <th class="num">Квалифицирован</th>
+    <th class="num">НДЗ</th>
+    <th class="num">Оффер озвучен</th>
+    <th class="num">Отложен</th>
+    <th class="num">Продажи+</th>
+    <th class="num">Потеряно</th>
+    <th class="num">Просрочено</th>
+  </tr></thead>
+  <tbody id="mgrTable"></tbody>
+</table>
 </div>
 
 <script>
