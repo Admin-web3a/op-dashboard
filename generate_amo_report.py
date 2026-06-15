@@ -106,8 +106,8 @@ VIZ_COLORS = {
     "new_lead":  "#0984e3",
     "om":        "#6c5ce7",
     "in_work":   "#00cec9",
-    "contact":   "#00b894",
-    "qualified": "#55efc4",
+    "contact":   "#ffd32a",
+    "qualified": "#ff6b81",
     "ndz":       "#f5a623",
     "offer":     "#7ed6df",
     "delayed":   "#a29bfe",
@@ -319,8 +319,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   .tag-new-lead{{background:#0d2540;color:#0984e3}}
   .tag-om{{background:#221a40;color:#6c5ce7}}
   .tag-in-work{{background:#0a3030;color:#00cec9}}
-  .tag-contact{{background:#0a2e25;color:#00b894}}
-  .tag-qualified{{background:#1a3a28;color:#55efc4}}
+  .tag-contact{{background:#3a3000;color:#ffd32a}}
+  .tag-qualified{{background:#3a1020;color:#ff6b81}}
   .tag-ndz{{background:#3a2800;color:var(--orange)}}
   .tag-offer{{background:#0a2e30;color:var(--blue)}}
   .tag-delayed{{background:#2a1a4a;color:#a29bfe}}
@@ -352,16 +352,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 <h2>Распределение по статусам воронки</h2>
 <div class="chart-card" style="height:420px"><canvas id="funnelChart"></canvas></div>
 
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px;align-items:start">
-  <div>
-    <h2>Просроченные задачи по менеджерам</h2>
-    <div class="chart-card" style="height:600px"><canvas id="overdueChart"></canvas></div>
-  </div>
-  <div>
-    <h2>Лиды по менеджерам</h2>
-    <div class="chart-card" style="height:600px"><canvas id="mgrChart"></canvas></div>
-  </div>
-</div>
+<h2>Лиды по менеджерам</h2>
+<div class="chart-card" style="height:600px"><canvas id="mgrChart"></canvas></div>
+
+<h2>Просроченные задачи по менеджерам</h2>
+<div class="chart-card" style="height:600px"><canvas id="overdueChart"></canvas></div>
 
 <h2>Детализация по менеджерам</h2>
 <div style="overflow-x:auto">
@@ -388,7 +383,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
 <script>
 const DATA = {json_data};
-const VCOLORS = {{incoming:"#74b9ff",new_lead:"#0984e3",om:"#6c5ce7",in_work:"#00cec9",contact:"#00b894",qualified:"#55efc4",ndz:"#f5a623",offer:"#7ed6df",delayed:"#a29bfe",sale:"#6ab04c",lost:"#eb4d4b"}};
+const VCOLORS = {{incoming:"#74b9ff",new_lead:"#0984e3",om:"#6c5ce7",in_work:"#00cec9",contact:"#ffd32a",qualified:"#ff6b81",ndz:"#f5a623",offer:"#7ed6df",delayed:"#a29bfe",sale:"#6ab04c",lost:"#eb4d4b"}};
 const VLABELS = {{incoming:"Входящие",new_lead:"Новый лид",om:"ОМ назначен",in_work:"Взято в работу",contact:"Контакт установлен",qualified:"Квалифицирован",ndz:"НДЗ",offer:"Оффер озвучен",delayed:"Отложен",sale:"Продажи+",lost:"Потеряно"}};
 const VORDER  = ["incoming","new_lead","om","in_work","contact","qualified","ndz","offer","delayed","sale","lost"];
 function fmt(n){{return(n||0).toLocaleString("ru-RU")}}
