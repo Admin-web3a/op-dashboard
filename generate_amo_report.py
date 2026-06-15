@@ -35,14 +35,14 @@ MANAGERS = {
 # Группы для менеджерских диаграмм и раскраски
 STATUS_GROUPS = {
     "НДЗ":                       "ndz",
-    "Входящий чекин":            "active",
-    "ОМ назначен чекин":         "active",
-    "Взято в работу":            "active",
-    "Контакт установлен":        "active",
-    "Новый лид":                 "active",
-    "Квалифицирован":            "active",
-    "ом назначен":               "active",
-    "ОМ назначен":               "active",
+    "Входящий чекин":            "incoming",
+    "ОМ назначен чекин":         "incoming",
+    "Новый лид":                 "new_lead",
+    "ом назначен":               "om",
+    "ОМ назначен":               "om",
+    "Взято в работу":            "in_work",
+    "Контакт установлен":        "contact",
+    "Квалифицирован":            "qualified",
     "Оффер озвучен":             "offer",
     "Отложенный спрос":          "delayed",
     "Выставлен счет":            "invoiced",
@@ -72,7 +72,12 @@ FUNNEL_ORDER = [
 ]
 
 VIZ_GROUP = {
-    "active":      "active",
+    "incoming":    "incoming",
+    "new_lead":    "new_lead",
+    "om":          "om",
+    "in_work":     "in_work",
+    "contact":     "contact",
+    "qualified":   "qualified",
     "ndz":         "ndz",
     "offer":       "offer",
     "delayed":     "delayed",
@@ -84,22 +89,32 @@ VIZ_GROUP = {
 }
 
 VIZ_LABELS = {
-    "active":  "В работе",
-    "ndz":     "НДЗ",
-    "offer":   "Оффер озвучен",
-    "delayed": "Отложен",
-    "sale":    "Продажи+",
-    "lost":    "Потеряно",
+    "incoming":  "Входящие",
+    "new_lead":  "Новый лид",
+    "om":        "ОМ назначен",
+    "in_work":   "Взято в работу",
+    "contact":   "Контакт установлен",
+    "qualified": "Квалифицирован",
+    "ndz":       "НДЗ",
+    "offer":     "Оффер озвучен",
+    "delayed":   "Отложен",
+    "sale":      "Продажи+",
+    "lost":      "Потеряно",
 }
 VIZ_COLORS = {
-    "active":  "#4f8ef7",
-    "ndz":     "#f5a623",
-    "offer":   "#7ed6df",
-    "delayed": "#a29bfe",
-    "sale":    "#6ab04c",
-    "lost":    "#eb4d4b",
+    "incoming":  "#74b9ff",
+    "new_lead":  "#0984e3",
+    "om":        "#6c5ce7",
+    "in_work":   "#00cec9",
+    "contact":   "#00b894",
+    "qualified": "#55efc4",
+    "ndz":       "#f5a623",
+    "offer":     "#7ed6df",
+    "delayed":   "#a29bfe",
+    "sale":      "#6ab04c",
+    "lost":      "#eb4d4b",
 }
-VIZ_ORDER  = ["active", "ndz", "offer", "delayed", "sale", "lost"]
+VIZ_ORDER  = ["incoming", "new_lead", "om", "in_work", "contact", "qualified", "ndz", "offer", "delayed", "sale", "lost"]
 
 # ── API ───────────────────────────────────────────────────────────────────────
 
@@ -300,7 +315,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   td{{padding:9px 14px;border-top:1px solid var(--border)}}
   tr:hover td{{background:#1e2133}}
   .tag{{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600}}
-  .tag-active{{background:#1a2a4a;color:var(--accent)}}
+  .tag-incoming{{background:#1a2f4a;color:#74b9ff}}
+  .tag-new-lead{{background:#0d2540;color:#0984e3}}
+  .tag-om{{background:#221a40;color:#6c5ce7}}
+  .tag-in-work{{background:#0a3030;color:#00cec9}}
+  .tag-contact{{background:#0a2e25;color:#00b894}}
+  .tag-qualified{{background:#1a3a28;color:#55efc4}}
   .tag-ndz{{background:#3a2800;color:var(--orange)}}
   .tag-offer{{background:#0a2e30;color:var(--blue)}}
   .tag-delayed{{background:#2a1a4a;color:#a29bfe}}
@@ -347,7 +367,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <thead><tr>
           <th>Менеджер</th>
           <th class="num">Всего</th>
-          <th class="num">В работе</th>
+          <th class="num">Входящие</th>
+          <th class="num">Новый лид</th>
+          <th class="num">ОМ назначен</th>
+          <th class="num">Взято в работу</th>
+          <th class="num">Контакт уст.</th>
+          <th class="num">Квалифицирован</th>
           <th class="num">НДЗ</th>
           <th class="num">Оффер озвучен</th>
           <th class="num">Отложен</th>
@@ -363,9 +388,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
 <script>
 const DATA = {json_data};
-const VCOLORS = {{active:"#4f8ef7",ndz:"#f5a623",offer:"#7ed6df",delayed:"#a29bfe",sale:"#6ab04c",lost:"#eb4d4b"}};
-const VLABELS = {{active:"В работе",ndz:"НДЗ",offer:"Оффер озвучен",delayed:"Отложен",sale:"Продажи+",lost:"Потеряно"}};
-const VORDER  = ["active","ndz","offer","delayed","sale","lost"];
+const VCOLORS = {{incoming:"#74b9ff",new_lead:"#0984e3",om:"#6c5ce7",in_work:"#00cec9",contact:"#00b894",qualified:"#55efc4",ndz:"#f5a623",offer:"#7ed6df",delayed:"#a29bfe",sale:"#6ab04c",lost:"#eb4d4b"}};
+const VLABELS = {{incoming:"Входящие",new_lead:"Новый лид",om:"ОМ назначен",in_work:"Взято в работу",contact:"Контакт установлен",qualified:"Квалифицирован",ndz:"НДЗ",offer:"Оффер озвучен",delayed:"Отложен",sale:"Продажи+",lost:"Потеряно"}};
+const VORDER  = ["incoming","new_lead","om","in_work","contact","qualified","ndz","offer","delayed","sale","lost"];
 function fmt(n){{return(n||0).toLocaleString("ru-RU")}}
 const base = {{
   responsive:true,
@@ -460,7 +485,12 @@ mgrIds.forEach(id=>{{
   tbody.innerHTML+=`<tr>
     <td>${{DATA.managers[id]||id}}</td>
     <td class="num">${{fmt(tot)}}</td>
-    <td class="num"><span class="tag tag-active">${{d.active||0}}</span></td>
+    <td class="num"><span class="tag tag-incoming">${{d.incoming||0}}</span></td>
+    <td class="num"><span class="tag tag-new-lead">${{d.new_lead||0}}</span></td>
+    <td class="num"><span class="tag tag-om">${{d.om||0}}</span></td>
+    <td class="num"><span class="tag tag-in-work">${{d.in_work||0}}</span></td>
+    <td class="num"><span class="tag tag-contact">${{d.contact||0}}</span></td>
+    <td class="num"><span class="tag tag-qualified">${{d.qualified||0}}</span></td>
     <td class="num"><span class="tag tag-ndz">${{d.ndz||0}}</span></td>
     <td class="num"><span class="tag tag-offer">${{d.offer||0}}</span></td>
     <td class="num"><span class="tag tag-delayed">${{d.delayed||0}}</span></td>
@@ -491,10 +521,12 @@ def generate_html(report):
         "daily_values":    report["daily_values"],
     }, ensure_ascii=False)
 
+    active_total = sum(gc.get(g, 0) for g in ("incoming", "new_lead", "om", "in_work", "contact", "qualified"))
+
     return HTML_TEMPLATE.format(
         updated_at = report["updated_at"],
         total      = f"{total:,}".replace(",", "\u00a0"),
-        active     = gc.get("active", 0),
+        active     = active_total,
         ndz        = gc.get("ndz", 0),
         offer_ozv  = gc.get("offer", 0),
         delayed    = gc.get("delayed", 0),
