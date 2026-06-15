@@ -335,28 +335,31 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 <h2>Лиды по менеджерам</h2>
 <div class="chart-card" style="height:600px"><canvas id="mgrChart"></canvas></div>
 
-<div class="grid2" style="margin-top:16px">
+<div style="display:grid;grid-template-columns:1fr 2fr;gap:16px;margin-top:16px;align-items:start">
   <div>
     <h2>Просроченные задачи по менеджерам</h2>
     <div class="chart-card" style="height:600px"><canvas id="overdueChart"></canvas></div>
   </div>
+  <div>
+    <h2>Детализация по менеджерам</h2>
+    <div class="chart-card" style="overflow-x:auto;padding:0">
+      <table style="margin:0;border-radius:0">
+        <thead><tr>
+          <th>Менеджер</th>
+          <th class="num">Всего</th>
+          <th class="num">В работе</th>
+          <th class="num">НДЗ</th>
+          <th class="num">Оффер озвучен</th>
+          <th class="num">Отложен</th>
+          <th class="num">Продажи+</th>
+          <th class="num">Потеряно</th>
+          <th class="num">Просрочено</th>
+        </tr></thead>
+        <tbody id="mgrTable"></tbody>
+      </table>
+    </div>
+  </div>
 </div>
-
-<h2>Детализация по менеджерам</h2>
-<table>
-  <thead><tr>
-    <th>Менеджер</th>
-    <th class="num">Всего</th>
-    <th class="num">В работе</th>
-    <th class="num">НДЗ</th>
-    <th class="num">Оффер озвучен</th>
-    <th class="num">Отложен</th>
-    <th class="num">Продажи+</th>
-    <th class="num">Потеряно</th>
-    <th class="num">Просрочено</th>
-  </tr></thead>
-  <tbody id="mgrTable"></tbody>
-</table>
 
 <script>
 const DATA = {json_data};
