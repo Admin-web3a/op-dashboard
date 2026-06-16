@@ -20,6 +20,9 @@ SOURCE_FIELD_ID = 1321741
 SOURCE_ENUM_ID  = 953633    # Анкета перезаписи 06.2026
 UPDATED_FROM    = 1743465600  # 2026-04-01
 
+REASON_FIELD_ID = 180637    # Причина закрытия
+TEST_REASON     = "ТЕСТ"    # Исключаем тестовые сделки
+
 MANAGERS = {
     12377210: "Никита Саламатин",
     11176694: "Наталья",
@@ -152,6 +155,13 @@ def fetch_filtered_leads(statuses):
             break
         matched = 0
         for lead in batch:
+            is_test = any(
+                cf.get("field_id") == REASON_FIELD_ID
+                and any(v.get("value") == TEST_REASON for v in (cf.get("values") or []))
+                for cf in (lead.get("custom_fields_values") or [])
+            )
+            if is_test:
+                continue
             for cf in (lead.get("custom_fields_values") or []):
                 if cf.get("field_id") == SOURCE_FIELD_ID:
                     for v in cf.get("values", []):
@@ -371,6 +381,22 @@ def build_report():
     ready_labels = list(ready_counts.keys())
     ready_values = [ready_counts[k] for k in ready_labels]
 
+    # Closure reasons for lost leads
+    LOST_STATUS_ID = 143
+    reason_counts = Counter()
+    for lead in leads:
+        if lead.get("status_id") != LOST_STATUS_ID:
+            continue
+        for cf in (lead.get("custom_fields_values") or []):
+            if cf.get("field_id") == REASON_FIELD_ID:
+                vals = cf.get("values") or []
+                if vals:
+                    reason_counts[vals[0].get("value", "?")] += 1
+
+    # Sort by count descending
+    reason_labels = [r for r, _ in reason_counts.most_common()]
+    reason_values = [reason_counts[r] for r in reason_labels]
+
     # per-manager detailed group counts for table
     mgr_detail = {}
     for uid, cnts in mgr_viz.items():
@@ -397,6 +423,8 @@ def build_report():
         "conv_dates":       conv_dates,
         "conv_vzv":         conv_vzv,
         "conv_pct":         conv_pct,
+        "reason_labels":    reason_labels,
+        "reason_values":    reason_values,
     }
 
 # ── HTML ──────────────────────────────────────────────────────────────────────
@@ -496,6 +524,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
 <h2>Просроченные задачи по менеджерам</h2>
 <div class="chart-card" style="height:600px"><canvas id="overdueChart"></canvas></div>
+
+<h2>Причины закрытия сделок</h2>
+<div class="chart-card" style="height:320px"><canvas id="reasonChart"></canvas></div>
 
 <h2>Детализация по менеджерам</h2>
 <div style="overflow-x:auto">
@@ -750,6 +781,37 @@ new Chart(document.getElementById("readyChart"),{{
   }}
 }});
 
+// Closure reasons horizontal bar
+new Chart(document.getElementById("reasonChart"),{{
+  type:"bar",
+  data:{{
+    labels:DATA.reason_labels,
+    datasets:[{{
+      label:"Сделок",
+      data:DATA.reason_values,
+      backgroundColor:"#eb4d4b",
+      borderRadius:4,
+    }}]
+  }},
+  options:{{
+    indexAxis:"y",
+    maintainAspectRatio:false,
+    plugins:{{
+      legend:{{display:false}},
+      tooltip:{{callbacks:{{
+        label:function(c){{
+          const total=DATA.reason_values.reduce((a,b)=>a+b,0);
+          return ` ${{c.raw}} сделок (${{Math.round(c.raw/total*100)}}%)`;
+        }}
+      }}}}
+    }},
+    scales:{{
+      x:{{beginAtZero:true,ticks:{{color:"#e8eaf0"}},grid:{{color:"#1e2a3a"}}}},
+      y:{{ticks:{{color:"#e8eaf0",font:{{size:12}}}},grid:{{display:false}}}}
+    }}
+  }}
+}});
+
 // Table
 const tbody=document.getElementById("mgrTable");
 mgrIds.forEach(id=>{{
@@ -803,6 +865,8 @@ def generate_html(report):
         "conv_dates":      report["conv_dates"],
         "conv_vzv":        report["conv_vzv"],
         "conv_pct":        report["conv_pct"],
+        "reason_labels":   report["reason_labels"],
+        "reason_values":   report["reason_values"],
     }, ensure_ascii=False)
 
     active_total = sum(gc.get(g, 0) for g in ("incoming", "new_lead", "om", "in_work", "contact", "qualified"))
