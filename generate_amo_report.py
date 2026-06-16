@@ -400,6 +400,21 @@ def build_report():
     reason_labels = [r for r, _ in reason_counts.most_common()]
     reason_values = [reason_counts[r] for r in reason_labels]
 
+    # Per-manager revenue (sum of prices of won deals)
+    mgr_revenue = defaultdict(int)
+    for lead in leads:
+        uid = lead.get("responsible_user_id")
+        if uid not in MANAGERS:
+            continue
+        grp = statuses.get(lead.get("status_id"), {}).get("group", "")
+        if grp == "sale":
+            mgr_revenue[uid] += lead.get("price") or 0
+
+    # Sort by revenue descending
+    sorted_revenue = sorted(mgr_revenue.items(), key=lambda x: x[1], reverse=True)
+    revenue_mgr_ids  = [str(uid) for uid, _ in sorted_revenue]
+    revenue_values   = [rev for _, rev in sorted_revenue]
+
     # per-manager detailed group counts for table
     mgr_detail = {}
     for uid, cnts in mgr_viz.items():
@@ -428,6 +443,8 @@ def build_report():
         "conv_pct":         conv_pct,
         "reason_labels":    reason_labels,
         "reason_values":    reason_values,
+        "revenue_mgr_ids":  revenue_mgr_ids,
+        "revenue_values":   revenue_values,
     }
 
 # ── HTML ──────────────────────────────────────────────────────────────────────
@@ -527,6 +544,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
 <h2>Просроченные задачи по менеджерам</h2>
 <div class="chart-card" style="height:600px"><canvas id="overdueChart"></canvas></div>
+
+<h2>Выручка по менеджерам (продажи)</h2>
+<div class="chart-card" style="height:340px"><canvas id="revenueChart"></canvas></div>
 
 <h2>Причины закрытия сделок</h2>
 <div class="chart-card" style="height:320px"><canvas id="reasonChart"></canvas></div>
@@ -784,6 +804,35 @@ new Chart(document.getElementById("readyChart"),{{
   }}
 }});
 
+// Revenue by manager
+new Chart(document.getElementById("revenueChart"),{{
+  type:"bar",
+  data:{{
+    labels:DATA.revenue_mgr_ids.map(id=>DATA.managers[id]||id),
+    datasets:[{{
+      label:"Выручка, ₽",
+      data:DATA.revenue_values,
+      backgroundColor:"#6ab04c",
+      borderRadius:4,
+    }}]
+  }},
+  options:{{
+    maintainAspectRatio:false,
+    plugins:{{
+      legend:{{display:false}},
+      tooltip:{{callbacks:{{
+        label:function(c){{
+          return " " + c.raw.toLocaleString("ru-RU") + " ₽";
+        }}
+      }}}}
+    }},
+    scales:{{
+      x:{{ticks:{{color:"#e8eaf0",maxRotation:30}},grid:{{color:"#1e2a3a"}}}},
+      y:{{beginAtZero:true,ticks:{{color:"#e8eaf0",callback:v=>v.toLocaleString("ru-RU")+" ₽"}},grid:{{color:"#1e2a3a"}}}}
+    }}
+  }}
+}});
+
 // Closure reasons horizontal bar
 new Chart(document.getElementById("reasonChart"),{{
   type:"bar",
@@ -870,6 +919,8 @@ def generate_html(report):
         "conv_pct":        report["conv_pct"],
         "reason_labels":   report["reason_labels"],
         "reason_values":   report["reason_values"],
+        "revenue_mgr_ids": report["revenue_mgr_ids"],
+        "revenue_values":  report["revenue_values"],
     }, ensure_ascii=False)
 
     active_total = sum(gc.get(g, 0) for g in ("incoming", "new_lead", "om", "in_work", "contact", "qualified"))
