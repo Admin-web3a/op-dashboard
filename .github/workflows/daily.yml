@@ -2,7 +2,8 @@ name: Daily OP Dashboard
 
 on:
   schedule:
-    - cron: "0 4 * * *"
+    - cron: "0 4 * * *"   # 07:00 МСК
+    - cron: "0 6 * * *"   # 09:00 МСК (резерв)
   workflow_dispatch:
 
 permissions:
