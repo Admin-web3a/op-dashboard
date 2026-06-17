@@ -263,7 +263,8 @@ def compute_cohort_table(leads, statuses):
         monday = d - datetime.timedelta(days=d.weekday())
         week_leads[monday].append(lead)
 
-    sorted_weeks = sorted(week_leads.keys())
+    cohort_start = datetime.date(2026, 6, 1)
+    sorted_weeks = [w for w in sorted(week_leads.keys()) if w >= cohort_start]
 
     def stage_counts(lead_list):
         groups = [statuses.get(l.get("status_id"), {}).get("group", "active")
