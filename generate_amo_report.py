@@ -645,9 +645,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   </div>
 </div>
 
-<h2>Распределение по статусам воронки</h2>
-<div class="chart-card" style="height:400px"><canvas id="funnelChart"></canvas></div>
-
 <h2>Кумулятивная воронка (атрибутированная)</h2>
 <div class="chart-card" style="height:360px"><canvas id="cumFunnelChart"></canvas></div>
 
@@ -732,27 +729,6 @@ new Chart(document.getElementById("dailyChart"),{{
   }}
 }});
 
-// Funnel
-const funColors = DATA.sorted_statuses.map(s=>{{
-  const m={{
-    incoming:"#74b9ff",new_lead:"#0984e3",om:"#6c5ce7",in_work:"#00cec9",
-    contact:"#ffd32a",qualified:"#ff6b81",ndz:"#f5a623",
-    offer:"#7ed6df",delayed:"#a29bfe",invoiced:"#4f8ef7",sale:"#6ab04c",lost:"#eb4d4b"
-  }};
-  return m[s.group]||"#4f8ef7";
-}});
-new Chart(document.getElementById("funnelChart"),{{
-  type:"bar",
-  data:{{
-    labels:DATA.sorted_statuses.map(s=>s.name),
-    datasets:[{{label:"Сделок",data:DATA.sorted_statuses.map(s=>s.count),
-               backgroundColor:funColors,borderRadius:3}}]
-  }},
-  options:{{...base,indexAxis:"y",maintainAspectRatio:false,
-    plugins:{{...base.plugins,legend:{{display:false}}}},
-    scales:{{x:{{...base.scales.x}},y:{{ticks:{{color:"#e8eaf0",font:{{size:11}}}},grid:{{color:"#2a2d3a"}}}}}}
-  }}
-}});
 
 // Attributed funnel
 (function(){{
