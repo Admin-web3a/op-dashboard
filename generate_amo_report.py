@@ -805,60 +805,57 @@ new Chart(document.getElementById("funnelChart"),{{
   const totals = ct.totals;
 
   function convColor(pct){{
-    if(pct>=70) return "#6ab04c";
-    if(pct>=40) return "#f5a623";
-    return "#eb4d4b";
+    if(pct>=70) return '#6ab04c';
+    if(pct>=40) return '#f5a623';
+    return '#eb4d4b';
   }}
-  function barCell(cnt, prev, immature){{
+  function barCell(cnt, prev, immature, bgStyle){{
     const pct = prev>0 ? Math.round(cnt/prev*100) : 0;
     const col = convColor(pct);
-    const op  = immature ? "opacity:0.55;" : "";
-    return `<td style="padding:6px 12px;${{op}}">
-      <div style="display:flex;align-items:center;gap:7px">
-        <div style="width:54px;height:7px;background:#2a2d3a;border-radius:3px;flex-shrink:0">
-          <div style="width:${{pct}}%;height:100%;background:${{col}};border-radius:3px"></div>
-        </div>
-        <span style="font-size:12px;color:${{col}};font-weight:600">${{pct}}%</span>
-      </div>
-    </td>`;
+    const op  = immature ? 'opacity:0.55;' : '';
+    const bg  = bgStyle  ? bgStyle         : '';
+    return '<td style="padding:6px 12px;' + op + bg + '">'
+      + '<div style="display:flex;align-items:center;gap:7px">'
+      + '<div style="width:54px;height:7px;background:#2a2d3a;border-radius:3px;flex-shrink:0">'
+      + '<div style="width:' + pct + '%;height:100%;background:' + col + ';border-radius:3px"></div>'
+      + '</div>'
+      + '<span style="font-size:12px;color:' + col + ';font-weight:600">' + pct + '%</span>'
+      + '</div></td>';
   }}
 
   // Header
-  let html = `<thead><tr>
-    <th style="min-width:180px">Этап / Конверсия</th>`;
-  weeks.forEach(w=>{{
+  let html = '<thead><tr><th style="min-width:180px">Этап / Конверсия</th>';
+  weeks.forEach(function(w){{
     const imm = immSet.has(w);
-    html += `<th style="text-align:center;${{imm?"opacity:0.6":""}}">${{w}}${{imm?" *":""}}</th>`;
+    html += '<th style="text-align:center;' + (imm?'opacity:0.6':'') + '">' + w + (imm?' *':'') + '</th>';
   }});
-  html += `<th style="text-align:center;background:#1a2e0a">Итого</th></tr></thead><tbody>`;
+  html += '<th style="text-align:center;background:#1a2e0a">Итого</th></tr></thead><tbody>';
 
-  stages.forEach((stage, si)=>{{
+  stages.forEach(function(stage, si){{
     // Count row
-    html += `<tr style="border-top:2px solid #2a2d3a">
-      <td style="font-weight:600;color:#e8eaf0;font-size:13px">${{stage}}</td>`;
-    weeks.forEach(w=>{{
-      const cnt = (counts[w]||[])[si]||0;
+    html += '<tr style="border-top:2px solid #2a2d3a"><td style="font-weight:600;color:#e8eaf0;font-size:13px">' + stage + '</td>';
+    weeks.forEach(function(w){{
+      const cnt = ((counts[w]||[])[si])||0;
       const imm = immSet.has(w);
-      html += `<td class="num" style="${{imm?"opacity:0.6":""}}">${{fmt(cnt)}}</td>`;
+      html += '<td class="num" style="' + (imm?'opacity:0.6':'') + '">' + fmt(cnt) + '</td>';
     }});
-    html += `<td class="num" style="font-weight:700;background:#1a1f0a">${{fmt(totals[si])}}</td></tr>`;
+    html += '<td class="num" style="font-weight:700;background:#1a1f0a">' + fmt(totals[si]) + '</td></tr>';
 
-    // Conversion row (skip for first stage)
-    if(si>0){{
-      html += `<tr><td style="font-size:11px;color:#8b8fa8;padding-left:18px">↳ к предыдущему</td>`;
-      weeks.forEach(w=>{{
-        const cnt  = (counts[w]||[])[si]||0;
-        const prev = (counts[w]||[])[si-1]||0;
-        html += barCell(cnt, prev, immSet.has(w));
+    // Conversion row (skip first stage — no previous stage)
+    if(si > 0){{
+      html += '<tr><td style="font-size:11px;color:#8b8fa8;padding-left:18px">&#8627; к предыдущему</td>';
+      weeks.forEach(function(w){{
+        const cnt  = ((counts[w]||[])[si])||0;
+        const prev = ((counts[w]||[])[si-1])||0;
+        html += barCell(cnt, prev, immSet.has(w), '');
       }});
-      // Total conversion
-      html += barCell(totals[si], totals[si-1], false).replace("<td", "<td style=\"background:#1a1f0a\"").replace("<td style=\"padding","<td style=\"background:#1a1f0a;padding");
-      html += `</tr>`;
+      html += barCell(totals[si], totals[si-1], false, 'background:#1a1f0a;');
+      html += '</tr>';
     }}
   }});
 
-  html += `</tbody>`;
-  document.getElementById("cohortTable").innerHTML = html;
+  html += '</tbody>';
+  document.getElementById('cohortTable').innerHTML = html;
 }})();
 
 // Managers stacked
