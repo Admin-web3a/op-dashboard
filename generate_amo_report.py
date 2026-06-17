@@ -191,9 +191,56 @@ FUNNEL_POS = {
     "invoiced":  8,
     "excursion": 8,
     "sale":      9,
-    "ndz":       0,   # excluded: не является прогрессом
+    "ndz":       0,   # excluded
     "lost":      0,   # excluded
 }
+
+# Cumulative funnel: each stage counts all leads that reached it OR went further.
+# НДЗ and Закрыто are excluded (no history available).
+# Leads created directly at a deeper stage are attributed to all previous stages.
+CUMULATIVE_FUNNEL_STAGES = [
+    ("Входящий чекин",     1),
+    ("ОМ назначен чекин",  2),
+    ("Новый лид",          3),
+    ("ОМ назначен",        4),
+    ("Взято в работу",     5),
+    ("Контакт установлен", 6),
+    ("Квалифицирован",     7),
+    ("Оффер озвучен",      8),
+    ("Отложенный спрос",   9),
+    ("Выставлен счет",    10),
+    ("Продажи",           11),
+]
+
+STATUS_NAME_TO_CUM_POS = {
+    "Входящий чекин":           1,
+    "ОМ назначен чекин":        2,
+    "Новый лид":                3,
+    "ом назначен":              4,
+    "ОМ назначен":              4,
+    "Взято в работу":           5,
+    "Контакт установлен":       6,
+    "Квалифицирован":           7,
+    "Оффер озвучен":            8,
+    "Отложенный спрос":         9,
+    "Выставлен счет":          10,
+    "Экскурсия":               10,
+    "Внутренняя рассрочка":    11,
+    "Успешно реализовано":     11,
+    "НДЗ":                      0,
+    "Закрыто и не реализовано": 0,
+}
+
+def compute_cumulative_funnel(leads, statuses):
+    """For each funnel stage, count leads whose current status is at or beyond that stage."""
+    lead_positions = []
+    for lead in leads:
+        name = statuses.get(lead.get("status_id"), {}).get("name", "")
+        lead_positions.append(STATUS_NAME_TO_CUM_POS.get(name, 0))
+    return [
+        {"name": stage_name, "count": sum(1 for p in lead_positions if p >= stage_pos)}
+        for stage_name, stage_pos in CUMULATIVE_FUNNEL_STAGES
+    ]
 
 def compute_conversion_by_day(leads, statuses, tz_msk, start_date, today):
     """Cumulative conversion Взято→Контакт grouped by lead creation date.
@@ -314,6 +361,11 @@ def build_report():
     sorted_statuses = sorted(status_list, key=lambda x: x["_order"])
     for s in sorted_statuses:
         s.pop("_order", None)
+    # Remove Экскурсия from funnel chart (redundant with sale category)
+    sorted_statuses = [s for s in sorted_statuses if s.get("name") != "Экскурсия"]
+
+    # Cumulative funnel
+    cumulative_funnel = compute_cumulative_funnel(leads, statuses)
 
     # Daily lead counts from June 6 onwards
     tz_msk = datetime.timezone(datetime.timedelta(hours=3))
@@ -445,6 +497,7 @@ def build_report():
         "reason_values":    reason_values,
         "revenue_mgr_ids":  revenue_mgr_ids,
         "revenue_values":   revenue_values,
+        "cumulative_funnel": cumulative_funnel,
     }
 
 # ── HTML ──────────────────────────────────────────────────────────────────────
@@ -534,7 +587,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 </div>
 
 <h2>Распределение по статусам воронки</h2>
-<div class="chart-card" style="height:420px"><canvas id="funnelChart"></canvas></div>
+<div class="chart-card" style="height:400px"><canvas id="funnelChart"></canvas></div>
+
+<h2>Кумулятивная воронка (атрибутированная)</h2>
+<div class="chart-card" style="height:360px"><canvas id="cumFunnelChart"></canvas></div>
 
 <h2>Конверсия: Взято в работу → Контакт установлен</h2>
 <div class="chart-card" style="height:320px"><canvas id="convFunnelChart"></canvas></div>
@@ -613,8 +669,11 @@ new Chart(document.getElementById("dailyChart"),{{
 
 // Funnel
 const funColors = DATA.sorted_statuses.map(s=>{{
-  const m={{active:"#4f8ef7",ndz:"#f5a623",offer:"#7ed6df",delayed:"#5dade2",
-            invoiced:"#a29bfe",excursion:"#a29bfe",installment:"#a29bfe",sale:"#6ab04c",lost:"#eb4d4b"}};
+  const m={{
+    incoming:"#74b9ff",new_lead:"#0984e3",om:"#6c5ce7",in_work:"#00cec9",
+    contact:"#ffd32a",qualified:"#ff6b81",ndz:"#f5a623",
+    offer:"#7ed6df",delayed:"#a29bfe",invoiced:"#4f8ef7",sale:"#6ab04c",lost:"#eb4d4b"
+  }};
   return m[s.group]||"#4f8ef7";
 }});
 new Chart(document.getElementById("funnelChart"),{{
@@ -629,6 +688,43 @@ new Chart(document.getElementById("funnelChart"),{{
     scales:{{x:{{...base.scales.x}},y:{{ticks:{{color:"#e8eaf0",font:{{size:11}}}},grid:{{color:"#2a2d3a"}}}}}}
   }}
 }});
+
+// Cumulative funnel
+(function(){{
+  const stages = DATA.cumulative_funnel;
+  const maxVal = stages[0] ? stages[0].count : 1;
+  // Color transitions from blue (entry) to green (sale)
+  const palette = ["#4f8ef7","#74b9ff","#0984e3","#6c5ce7","#00cec9","#ffd32a","#ff6b81","#7ed6df","#a29bfe","#4f8ef7","#6ab04c"];
+  new Chart(document.getElementById("cumFunnelChart"),{{
+    type:"bar",
+    data:{{
+      labels: stages.map(s=>s.name),
+      datasets:[{{
+        label:"Достигло этапа",
+        data: stages.map(s=>s.count),
+        backgroundColor: stages.map((_,i)=>palette[i]||"#4f8ef7"),
+        borderRadius:3,
+      }}]
+    }},
+    options:{{
+      indexAxis:"y",
+      maintainAspectRatio:false,
+      plugins:{{
+        legend:{{display:false}},
+        tooltip:{{callbacks:{{
+          label:function(c){{
+            const pct = maxVal ? Math.round(c.raw/maxVal*100) : 0;
+            return ` ${{fmt(c.raw)}} лидов (${{pct}}% от входящих)`;
+          }}
+        }}}}
+      }},
+      scales:{{
+        x:{{beginAtZero:true,ticks:{{color:"#e8eaf0"}},grid:{{color:"#2a2d3a"}}}},
+        y:{{ticks:{{color:"#e8eaf0",font:{{size:12}}}},grid:{{color:"#2a2d3a"}}}}
+      }}
+    }}
+  }});
+}})();
 
 // Managers stacked
 const mgrIds=Object.keys(DATA.mgr_viz).sort((a,b)=>{{
@@ -919,8 +1015,9 @@ def generate_html(report):
         "conv_pct":        report["conv_pct"],
         "reason_labels":   report["reason_labels"],
         "reason_values":   report["reason_values"],
-        "revenue_mgr_ids": report["revenue_mgr_ids"],
-        "revenue_values":  report["revenue_values"],
+        "revenue_mgr_ids":  report["revenue_mgr_ids"],
+        "revenue_values":   report["revenue_values"],
+        "cumulative_funnel": report["cumulative_funnel"],
     }, ensure_ascii=False)
 
     active_total = sum(gc.get(g, 0) for g in ("incoming", "new_lead", "om", "in_work", "contact", "qualified"))
