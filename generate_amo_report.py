@@ -195,51 +195,45 @@ FUNNEL_POS = {
     "lost":      0,   # excluded
 }
 
-# Cumulative funnel: each stage counts all leads that reached it OR went further.
-# НДЗ and Закрыто are excluded (no history available).
-# Leads created directly at a deeper stage are attributed to all previous stages.
-CUMULATIVE_FUNNEL_STAGES = [
-    ("Входящий чекин",     1),
-    ("ОМ назначен чекин",  2),
-    ("Новый лид",          3),
-    ("ОМ назначен",        4),
-    ("Взято в работу",     5),
-    ("Контакт установлен", 6),
-    ("Квалифицирован",     7),
-    ("Оффер озвучен",      8),
-    ("Отложенный спрос",   9),
-    ("Выставлен счет",    10),
-    ("Продажи",           11),
+# ── Attributed funnel ────────────────────────────────────────────────────────
+# Business rules confirmed by user:
+#   • Входящий чекин + ОМ назначен чекин + ОМ назначен → attributed to "Новый лид"
+#     (pre-sales incoming pool, not yet worked by sales)
+#   • НДЗ and Закрыто → attributed to "Взято в работу"
+#     (sales always works a lead before it can be moved to НДЗ/Закрыто)
+#   • Экскурсия → excluded from funnel entirely
+# Each tuple: (display_name, frozenset_of_groups_that_count_for_this_stage)
+ATTR_FUNNEL = [
+    ("Новый лид",
+        frozenset({"incoming", "new_lead", "om", "in_work", "contact",
+                   "qualified", "offer", "delayed", "invoiced", "sale",
+                   "ndz", "lost"})),
+    ("Взято в работу",
+        frozenset({"in_work", "contact", "qualified",
+                   "offer", "delayed", "invoiced", "sale",
+                   "ndz", "lost"})),
+    ("Контакт установлен",
+        frozenset({"contact", "qualified", "offer", "delayed", "invoiced", "sale"})),
+    ("Квалифицирован",
+        frozenset({"qualified", "offer", "delayed", "invoiced", "sale"})),
+    ("Оффер озвучен",
+        frozenset({"offer", "delayed", "invoiced", "sale"})),
+    ("Выставлен счет",
+        frozenset({"invoiced", "sale"})),
+    ("Продажи",
+        frozenset({"sale"})),
 ]
 
-STATUS_NAME_TO_CUM_POS = {
-    "Входящий чекин":           1,
-    "ОМ назначен чекин":        2,
-    "Новый лид":                3,
-    "ом назначен":              4,
-    "ОМ назначен":              4,
-    "Взято в работу":           5,
-    "Контакт установлен":       6,
-    "Квалифицирован":           7,
-    "Оффер озвучен":            8,
-    "Отложенный спрос":         9,
-    "Выставлен счет":          10,
-    "Экскурсия":               10,
-    "Внутренняя рассрочка":    11,
-    "Успешно реализовано":     11,
-    "НДЗ":                      0,
-    "Закрыто и не реализовано": 0,
-}
-
 def compute_cumulative_funnel(leads, statuses):
-    """For each funnel stage, count leads whose current status is at or beyond that stage."""
-    lead_positions = []
-    for lead in leads:
-        name = statuses.get(lead.get("status_id"), {}).get("name", "")
-        lead_positions.append(STATUS_NAME_TO_CUM_POS.get(name, 0))
+    """Attributed funnel: each stage counts leads at that group or deeper.
+    Excursion is excluded; НДЗ/Закрыто are attributed to Взято в работу."""
+    lead_groups = [
+        statuses.get(lead.get("status_id"), {}).get("group", "active")
+        for lead in leads
+    ]
     return [
-        {"name": stage_name, "count": sum(1 for p in lead_positions if p >= stage_pos)}
-        for stage_name, stage_pos in CUMULATIVE_FUNNEL_STAGES
+        {"name": name, "count": sum(1 for g in lead_groups if g in groups)}
+        for name, groups in ATTR_FUNNEL
     ]
 
 def compute_conversion_by_day(leads, statuses, tz_msk, start_date, today):
@@ -689,18 +683,17 @@ new Chart(document.getElementById("funnelChart"),{{
   }}
 }});
 
-// Cumulative funnel
+// Attributed funnel
 (function(){{
   const stages = DATA.cumulative_funnel;
-  const maxVal = stages[0] ? stages[0].count : 1;
-  // Color transitions from blue (entry) to green (sale)
-  const palette = ["#4f8ef7","#74b9ff","#0984e3","#6c5ce7","#00cec9","#ffd32a","#ff6b81","#7ed6df","#a29bfe","#4f8ef7","#6ab04c"];
+  const topVal = stages[0] ? stages[0].count : 1;
+  const palette = ["#4f8ef7","#00cec9","#ffd32a","#ff6b81","#7ed6df","#a29bfe","#6ab04c"];
   new Chart(document.getElementById("cumFunnelChart"),{{
     type:"bar",
     data:{{
       labels: stages.map(s=>s.name),
       datasets:[{{
-        label:"Достигло этапа",
+        label:"Лидов",
         data: stages.map(s=>s.count),
         backgroundColor: stages.map((_,i)=>palette[i]||"#4f8ef7"),
         borderRadius:3,
@@ -713,14 +706,19 @@ new Chart(document.getElementById("funnelChart"),{{
         legend:{{display:false}},
         tooltip:{{callbacks:{{
           label:function(c){{
-            const pct = maxVal ? Math.round(c.raw/maxVal*100) : 0;
-            return ` ${{fmt(c.raw)}} лидов (${{pct}}% от входящих)`;
+            const i = c.dataIndex;
+            const pctTop = topVal ? Math.round(c.raw/topVal*100) : 0;
+            const prev = i > 0 ? stages[i-1].count : topVal;
+            const pctPrev = prev ? Math.round(c.raw/prev*100) : 0;
+            const lines = [` ${{fmt(c.raw)}} лидов (${{pctTop}}% от входящих)`];
+            if(i > 0) lines.push(` Конверсия с предыдущего: ${{pctPrev}}%`);
+            return lines;
           }}
         }}}}
       }},
       scales:{{
         x:{{beginAtZero:true,ticks:{{color:"#e8eaf0"}},grid:{{color:"#2a2d3a"}}}},
-        y:{{ticks:{{color:"#e8eaf0",font:{{size:12}}}},grid:{{color:"#2a2d3a"}}}}
+        y:{{ticks:{{color:"#e8eaf0",font:{{size:13}}}},grid:{{color:"#2a2d3a"}}}}
       }}
     }}
   }});
