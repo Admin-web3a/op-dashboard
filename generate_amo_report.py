@@ -204,6 +204,8 @@ FUNNEL_POS = {
 #   • Экскурсия → excluded from funnel entirely
 # Each tuple: (display_name, frozenset_of_groups_that_count_for_this_stage)
 ATTR_FUNNEL = [
+    # "delayed" (Отложенный спрос) может выйти из воронки сразу после "Взято в работу",
+    # поэтому атрибутируется только к "Новый лид" и "Взято в работу", но не ниже.
     ("Новый лид",
         frozenset({"incoming", "new_lead", "om", "in_work", "contact",
                    "qualified", "offer", "delayed", "invoiced", "sale",
@@ -213,11 +215,11 @@ ATTR_FUNNEL = [
                    "offer", "delayed", "invoiced", "sale",
                    "ndz", "lost"})),
     ("Контакт установлен",
-        frozenset({"contact", "qualified", "offer", "delayed", "invoiced", "sale"})),
+        frozenset({"contact", "qualified", "offer", "invoiced", "sale"})),
     ("Квалифицирован",
-        frozenset({"qualified", "offer", "delayed", "invoiced", "sale"})),
+        frozenset({"qualified", "offer", "invoiced", "sale"})),
     ("Оффер озвучен",
-        frozenset({"offer", "delayed", "invoiced", "sale"})),
+        frozenset({"offer", "invoiced", "sale"})),
     ("Выставлен счет",
         frozenset({"invoiced", "sale"})),
     ("Продажи",
@@ -235,6 +237,64 @@ def compute_cumulative_funnel(leads, statuses):
         {"name": name, "count": sum(1 for g in lead_groups if g in groups)}
         for name, groups in ATTR_FUNNEL
     ]
+
+
+def compute_cohort_table(leads, statuses):
+    """Weekly cohort conversion table (Mon–Sun cohorts by creation date).
+
+    For each cohort: how many leads from that week are currently at each
+    attributed funnel stage. Conversion = stage_i / stage_{i-1}.
+    Cohorts started < 14 days ago are flagged as immature (funnel not yet settled).
+    """
+    tz_msk = datetime.timezone(datetime.timedelta(hours=3))
+    today   = datetime.datetime.now(tz_msk).date()
+    immature_cutoff = today - datetime.timedelta(days=14)
+
+    stage_names  = [name   for name, _      in ATTR_FUNNEL]
+    stage_groups = [groups for _,    groups in ATTR_FUNNEL]
+
+    # Group leads by Monday of their creation week
+    week_leads = defaultdict(list)
+    for lead in leads:
+        ts = lead.get("created_at")
+        if not ts:
+            continue
+        d = datetime.datetime.fromtimestamp(ts, tz=tz_msk).date()
+        monday = d - datetime.timedelta(days=d.weekday())
+        week_leads[monday].append(lead)
+
+    sorted_weeks = sorted(week_leads.keys())
+
+    def stage_counts(lead_list):
+        groups = [statuses.get(l.get("status_id"), {}).get("group", "active")
+                  for l in lead_list]
+        return [sum(1 for g in groups if g in sg) for sg in stage_groups]
+
+    cohort_counts = {}
+    for monday in sorted_weeks:
+        sunday = monday + datetime.timedelta(days=6)
+        label  = f"{monday.strftime('%d.%m')}–{sunday.strftime('%d.%m')}"
+        cohort_counts[label] = stage_counts(week_leads[monday])
+
+    week_labels = []
+    immature    = set()
+    for monday in sorted_weeks:
+        sunday = monday + datetime.timedelta(days=6)
+        label  = f"{monday.strftime('%d.%m')}–{sunday.strftime('%d.%m')}"
+        week_labels.append(label)
+        if monday > immature_cutoff:
+            immature.add(label)
+
+    # Overall totals (all leads regardless of week)
+    totals = stage_counts(leads)
+
+    return {
+        "weeks":    week_labels,
+        "immature": list(immature),
+        "stages":   stage_names,
+        "counts":   cohort_counts,   # {week_label: [count_per_stage]}
+        "totals":   totals,
+    }
 
 def compute_conversion_by_day(leads, statuses, tz_msk, start_date, today):
     """Cumulative conversion Взято→Контакт grouped by lead creation date.
@@ -358,8 +418,11 @@ def build_report():
     # Remove Экскурсия from funnel chart (redundant with sale category)
     sorted_statuses = [s for s in sorted_statuses if s.get("name") != "Экскурсия"]
 
-    # Cumulative funnel
+    # Cumulative funnel (bar chart)
     cumulative_funnel = compute_cumulative_funnel(leads, statuses)
+
+    # Cohort conversion table (weekly)
+    cohort_table = compute_cohort_table(leads, statuses)
 
     # Daily lead counts from June 6 onwards
     tz_msk = datetime.timezone(datetime.timedelta(hours=3))
@@ -492,6 +555,7 @@ def build_report():
         "revenue_mgr_ids":  revenue_mgr_ids,
         "revenue_values":   revenue_values,
         "cumulative_funnel": cumulative_funnel,
+        "cohort_table":      cohort_table,
     }
 
 # ── HTML ──────────────────────────────────────────────────────────────────────
@@ -585,6 +649,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
 <h2>Кумулятивная воронка (атрибутированная)</h2>
 <div class="chart-card" style="height:360px"><canvas id="cumFunnelChart"></canvas></div>
+
+<h2>Конверсия по неделям (когортный анализ)</h2>
+<p style="color:#8b8fa8;font-size:12px;margin:-10px 0 14px">Лиды сгруппированы по дате создания (неделя пн–вс). * — незрелые когорты (&lt;14 дней), конверсия занижена.</p>
+<div style="overflow-x:auto">
+<table id="cohortTable" style="min-width:600px"></table>
+</div>
 
 <h2>Конверсия: Взято в работу → Контакт установлен</h2>
 <div class="chart-card" style="height:320px"><canvas id="convFunnelChart"></canvas></div>
@@ -722,6 +792,73 @@ new Chart(document.getElementById("funnelChart"),{{
       }}
     }}
   }});
+}})();
+
+// Cohort conversion table
+(function(){{
+  const ct = DATA.cohort_table;
+  if(!ct||!ct.weeks||!ct.weeks.length) return;
+  const immSet = new Set(ct.immature);
+  const weeks  = ct.weeks;
+  const stages = ct.stages;
+  const counts = ct.counts;
+  const totals = ct.totals;
+
+  function convColor(pct){{
+    if(pct>=70) return "#6ab04c";
+    if(pct>=40) return "#f5a623";
+    return "#eb4d4b";
+  }}
+  function barCell(cnt, prev, immature){{
+    const pct = prev>0 ? Math.round(cnt/prev*100) : 0;
+    const col = convColor(pct);
+    const op  = immature ? "opacity:0.55;" : "";
+    return `<td style="padding:6px 12px;${{op}}">
+      <div style="display:flex;align-items:center;gap:7px">
+        <div style="width:54px;height:7px;background:#2a2d3a;border-radius:3px;flex-shrink:0">
+          <div style="width:${{pct}}%;height:100%;background:${{col}};border-radius:3px"></div>
+        </div>
+        <span style="font-size:12px;color:${{col}};font-weight:600">${{pct}}%</span>
+      </div>
+    </td>`;
+  }}
+
+  // Header
+  let html = `<thead><tr>
+    <th style="min-width:180px">Этап / Конверсия</th>`;
+  weeks.forEach(w=>{{
+    const imm = immSet.has(w);
+    html += `<th style="text-align:center;${{imm?"opacity:0.6":""}}">${{w}}${{imm?" *":""}}</th>`;
+  }});
+  html += `<th style="text-align:center;background:#1a2e0a">Итого</th></tr></thead><tbody>`;
+
+  stages.forEach((stage, si)=>{{
+    // Count row
+    html += `<tr style="border-top:2px solid #2a2d3a">
+      <td style="font-weight:600;color:#e8eaf0;font-size:13px">${{stage}}</td>`;
+    weeks.forEach(w=>{{
+      const cnt = (counts[w]||[])[si]||0;
+      const imm = immSet.has(w);
+      html += `<td class="num" style="${{imm?"opacity:0.6":""}}">${{fmt(cnt)}}</td>`;
+    }});
+    html += `<td class="num" style="font-weight:700;background:#1a1f0a">${{fmt(totals[si])}}</td></tr>`;
+
+    // Conversion row (skip for first stage)
+    if(si>0){{
+      html += `<tr><td style="font-size:11px;color:#8b8fa8;padding-left:18px">↳ к предыдущему</td>`;
+      weeks.forEach(w=>{{
+        const cnt  = (counts[w]||[])[si]||0;
+        const prev = (counts[w]||[])[si-1]||0;
+        html += barCell(cnt, prev, immSet.has(w));
+      }});
+      // Total conversion
+      html += barCell(totals[si], totals[si-1], false).replace("<td", "<td style=\"background:#1a1f0a\"").replace("<td style=\"padding","<td style=\"background:#1a1f0a;padding");
+      html += `</tr>`;
+    }}
+  }});
+
+  html += `</tbody>`;
+  document.getElementById("cohortTable").innerHTML = html;
 }})();
 
 // Managers stacked
@@ -1016,6 +1153,7 @@ def generate_html(report):
         "revenue_mgr_ids":  report["revenue_mgr_ids"],
         "revenue_values":   report["revenue_values"],
         "cumulative_funnel": report["cumulative_funnel"],
+        "cohort_table":      report["cohort_table"],
     }, ensure_ascii=False)
 
     active_total = sum(gc.get(g, 0) for g in ("incoming", "new_lead", "om", "in_work", "contact", "qualified"))
