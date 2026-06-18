@@ -336,13 +336,15 @@ def compute_conversion_by_day(leads, statuses, tz_msk, start_date, today):
     return all_dates, vzv_vals, kon_pct
 
 
-def fetch_overdue_tasks():
+def fetch_overdue_tasks(filtered_lead_ids):
+    """Fetch overdue tasks, counting only those linked to leads from the target source."""
     now_ts = int(datetime.datetime.utcnow().timestamp())
     try:
         tasks = []
         page = 1
         while True:
-            path = f"tasks?limit=250&page={page}&filter[is_completed]=0&filter[complete_till][to]={now_ts}"
+            path = (f"tasks?limit=250&page={page}"
+                    f"&filter[is_completed]=0&filter[complete_till][to]={now_ts}")
             data = api_get(path)
             batch = data.get("_embedded", {}).get("tasks", [])
             if not batch:
@@ -355,6 +357,9 @@ def fetch_overdue_tasks():
         return {}
     counts = Counter()
     for t in tasks:
+        # Only count tasks linked to leads from "Анкета перезаписи 06.2026"
+        if t.get("entity_type") == "leads" and t.get("entity_id") not in filtered_lead_ids:
+            continue
         uid = t.get("responsible_user_id")
         if uid in MANAGERS:
             counts[uid] += 1
@@ -392,7 +397,8 @@ def build_report():
         mgr_viz[uid][vg] += 1
 
     print("Fetching overdue tasks…")
-    overdue = fetch_overdue_tasks()
+    filtered_lead_ids = {lead["id"] for lead in leads if lead.get("id")}
+    overdue = fetch_overdue_tasks(filtered_lead_ids)
 
     print("Computing conversion (Взято → Контакт) by creation date…")
     _tz_msk     = datetime.timezone(datetime.timedelta(hours=3))
