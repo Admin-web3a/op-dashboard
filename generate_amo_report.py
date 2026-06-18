@@ -453,9 +453,11 @@ def build_report():
     CAPITAL_FIELD_ID = 1304047
     READY_FIELD_ID   = 1317111
 
-    # Capital order for display
+    # Capital order for display — "Не указан" at the end for leads with empty field
+    NO_CAPITAL = "Не указан"
     CAPITAL_ORDER = ["$0-5,000", "до $5,000", "$5,000-50,000", "$50,000-100,000",
-                     "$100,000-500,000", "$500,000-1,000,000", "$1,000,000+", "Неизвестно"]
+                     "$100,000-500,000", "$500,000-1,000,000", "$1,000,000+",
+                     "Неизвестно", NO_CAPITAL]
 
     capital_counts = Counter()
     ready_counts   = Counter()
@@ -472,14 +474,15 @@ def build_report():
                 cap_val = vals[0].get("value", "?")
             elif fid == READY_FIELD_ID and vals:
                 rdy_val = vals[0].get("value", "?")
-        if cap_val:
-            capital_counts[cap_val] += 1
-            created_ts = lead.get("created_at")
-            if created_ts:
-                lead_date = datetime.datetime.fromtimestamp(created_ts, tz=tz_msk).date()
-                day_key = lead_date.strftime("%d.%m")
-                if day_key in daily_capital:
-                    daily_capital[day_key][cap_val] += 1
+        # Leads with no capital value go into the "Не указан" bucket
+        effective_cap = cap_val if cap_val else NO_CAPITAL
+        capital_counts[effective_cap] += 1
+        created_ts = lead.get("created_at")
+        if created_ts:
+            lead_date = datetime.datetime.fromtimestamp(created_ts, tz=tz_msk).date()
+            day_key = lead_date.strftime("%d.%m")
+            if day_key in daily_capital:
+                daily_capital[day_key][effective_cap] += 1
         if rdy_val:
             ready_counts[rdy_val] += 1
 
@@ -875,7 +878,7 @@ new Chart(document.getElementById("overdueChart"),{{
 }});
 
 // Daily capital grouped bar (% of day total)
-const capColors = {{"$0-5,000":"#eb4d4b","до $5,000":"#f5a623","$5,000-50,000":"#ffd32a","$50,000-100,000":"#6ab04c","$100,000-500,000":"#00cec9","$500,000-1,000,000":"#4f8ef7","$1,000,000+":"#a29bfe","Неизвестно":"#636e72"}};
+const capColors = {{"$0-5,000":"#eb4d4b","до $5,000":"#f5a623","$5,000-50,000":"#ffd32a","$50,000-100,000":"#6ab04c","$100,000-500,000":"#00cec9","$500,000-1,000,000":"#4f8ef7","$1,000,000+":"#a29bfe","Неизвестно":"#636e72","Не указан":"#3d4045"}};
 const dayTotals = DATA.daily_cap_labels.map((_,i)=>DATA.capital_labels.reduce((s,c)=>s+(DATA.daily_cap_data[c][i]||0),0));
 new Chart(document.getElementById("dailyCapChart"),{{
   type:"bar",
@@ -976,7 +979,7 @@ new Chart(document.getElementById("capitalChart"),{{
     labels:DATA.capital_labels,
     datasets:[{{
       data:DATA.capital_values,
-      backgroundColor:["#eb4d4b","#f5a623","#ffd32a","#6ab04c","#00cec9","#4f8ef7","#a29bfe","#636e72"],
+      backgroundColor:["#eb4d4b","#f5a623","#ffd32a","#6ab04c","#00cec9","#4f8ef7","#a29bfe","#636e72","#3d4045"],
       borderWidth:0,
     }}]
   }},
