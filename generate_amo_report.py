@@ -483,8 +483,7 @@ def build_report():
             day_key = lead_date.strftime("%d.%m")
             if day_key in daily_capital:
                 daily_capital[day_key][effective_cap] += 1
-        if rdy_val:
-            ready_counts[rdy_val] += 1
+        ready_counts[rdy_val if rdy_val else "Не ответил на вопрос"] += 1
 
     # Sort capital by predefined order
     capital_labels = [k for k in CAPITAL_ORDER if k in capital_counts]
@@ -999,10 +998,20 @@ new Chart(document.getElementById("capitalChart"),{{
 new Chart(document.getElementById("readyChart"),{{
   type:"doughnut",
   data:{{
-    labels:DATA.ready_labels.map(l=>l==="Супер_Я_готов"?"Готов сейчас":l==="Хочу_больше_узнать_про_программу"?"Хочу узнать больше":l),
+    labels:DATA.ready_labels.map(function(l){{
+      if(l==="Супер_Я_готов") return "Готов сейчас";
+      if(l==="Хочу_больше_узнать_про_программу") return "Хочу узнать больше";
+      if(l==="Не ответил на вопрос") return "Не ответил на вопрос";
+      return l;
+    }}),
     datasets:[{{
       data:DATA.ready_values,
-      backgroundColor:["#6ab04c","#4f8ef7","#f5a623","#a29bfe"],
+      backgroundColor:DATA.ready_labels.map(function(l){{
+        if(l==="Супер_Я_готов") return "#6ab04c";
+        if(l==="Хочу_больше_узнать_про_программу") return "#4f8ef7";
+        if(l==="Не ответил на вопрос") return "#3d4045";
+        return "#f5a623";
+      }}),
       borderWidth:0,
     }}]
   }},
