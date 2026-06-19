@@ -533,6 +533,29 @@ def build_report():
     revenue_mgr_ids  = [str(uid) for uid, _ in sorted_revenue]
     revenue_values   = [rev for _, rev in sorted_revenue]
 
+    # Per-manager conversion: Взято в работу → Продажи
+    # Denominator uses same ATTR_FUNNEL logic as "Взято в работу" stage
+    INWORK_GROUPS = frozenset({"in_work", "contact", "qualified",
+                                "offer", "delayed", "invoiced", "sale",
+                                "ndz", "lost"})
+    mgr_conv_data = {}
+    for uid in MANAGERS:
+        inwork = sum(
+            1 for l in leads
+            if l.get("responsible_user_id") == uid
+            and statuses.get(l.get("status_id"), {}).get("group", "") in INWORK_GROUPS
+        )
+        sales = sum(
+            1 for l in leads
+            if l.get("responsible_user_id") == uid
+            and statuses.get(l.get("status_id"), {}).get("group", "") == "sale"
+        )
+        mgr_conv_data[str(uid)] = {
+            "inwork": inwork,
+            "sales":  sales,
+            "pct":    round(sales / inwork * 100, 1) if inwork else 0,
+        }
+
     # per-manager detailed group counts for table
     mgr_detail = {}
     for uid, cnts in mgr_viz.items():
@@ -563,6 +586,7 @@ def build_report():
         "reason_values":    reason_values,
         "revenue_mgr_ids":  revenue_mgr_ids,
         "revenue_values":   revenue_values,
+        "mgr_conv":         mgr_conv_data,
         "cumulative_funnel": cumulative_funnel,
         "cohort_table":      cohort_table,
     }
@@ -673,6 +697,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
 <h2>Выручка по менеджерам (продажи)</h2>
 <div class="chart-card" style="height:340px"><canvas id="revenueChart"></canvas></div>
+
+<h2>Конверсия Взято в работу → Продажи по менеджерам</h2>
+<div class="chart-card" style="height:360px"><canvas id="mgrConvChart"></canvas></div>
 
 <h2>Причины закрытия сделок</h2>
 <div class="chart-card" style="height:320px"><canvas id="reasonChart"></canvas></div>
@@ -1056,6 +1083,52 @@ new Chart(document.getElementById("revenueChart"),{{
   }}
 }});
 
+// Manager conversion: Взято в работу → Продажи
+(function(){{
+  const conv = DATA.mgr_conv;
+  const ids = Object.keys(conv)
+    .filter(id => DATA.managers[id] && conv[id].inwork > 0)
+    .sort((a,b) => conv[b].pct - conv[a].pct);
+  if(!ids.length) return;
+  const pcts   = ids.map(id => conv[id].pct);
+  const labels = ids.map(id => DATA.managers[id]);
+  const bgColors = pcts.map(p => p >= 5 ? '#6ab04c' : p >= 2 ? '#f5a623' : '#eb4d4b');
+  new Chart(document.getElementById('mgrConvChart'), {{
+    type: 'bar',
+    data: {{
+      labels: labels,
+      datasets: [{{
+        label: 'Конверсия %',
+        data: pcts,
+        backgroundColor: bgColors,
+        borderRadius: 4,
+      }}]
+    }},
+    options: {{
+      indexAxis: 'y',
+      maintainAspectRatio: false,
+      plugins: {{
+        legend: {{display: false}},
+        tooltip: {{callbacks: {{
+          label: function(c) {{
+            const id = ids[c.dataIndex];
+            const d = conv[id];
+            return ' ' + c.raw + '% (' + d.sales + ' продаж из ' + d.inwork + ' в работе)';
+          }}
+        }}}}
+      }},
+      scales: {{
+        x: {{
+          beginAtZero: true, max: 100,
+          ticks: {{color: '#e8eaf0', callback: function(v){{ return v + '%'; }}}},
+          grid: {{color: '#2a2d3a'}}
+        }},
+        y: {{ticks: {{color: '#e8eaf0', font: {{size: 12}}}}, grid: {{color: '#2a2d3a'}}}}
+      }}
+    }}
+  }});
+}})();
+
 // Closure reasons horizontal bar
 new Chart(document.getElementById("reasonChart"),{{
   type:"bar",
@@ -1144,6 +1217,7 @@ def generate_html(report):
         "reason_values":   report["reason_values"],
         "revenue_mgr_ids":  report["revenue_mgr_ids"],
         "revenue_values":   report["revenue_values"],
+        "mgr_conv":         report["mgr_conv"],
         "cumulative_funnel": report["cumulative_funnel"],
         "cohort_table":      report["cohort_table"],
     }, ensure_ascii=False)
