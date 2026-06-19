@@ -695,11 +695,16 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 <h2>Просроченные задачи по менеджерам</h2>
 <div class="chart-card" style="height:600px"><canvas id="overdueChart"></canvas></div>
 
-<h2>Выручка по менеджерам (продажи)</h2>
-<div class="chart-card" style="height:340px"><canvas id="revenueChart"></canvas></div>
-
-<h2>Конверсия Взято в работу → Продажи по менеджерам</h2>
-<div class="chart-card" style="height:360px"><canvas id="mgrConvChart"></canvas></div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start">
+  <div>
+    <h2>Выручка по менеджерам</h2>
+    <div class="chart-card" style="height:360px"><canvas id="revenueChart"></canvas></div>
+  </div>
+  <div>
+    <h2>Конверсия Взято в работу → Продажи</h2>
+    <div class="chart-card" style="height:360px"><canvas id="mgrConvChart"></canvas></div>
+  </div>
+</div>
 
 <h2>Причины закрытия сделок</h2>
 <div class="chart-card" style="height:320px"><canvas id="reasonChart"></canvas></div>
@@ -1119,7 +1124,7 @@ new Chart(document.getElementById("revenueChart"),{{
       }},
       scales: {{
         x: {{
-          beginAtZero: true, max: 100,
+          beginAtZero: true, max: 20,
           ticks: {{color: '#e8eaf0', callback: function(v){{ return v + '%'; }}}},
           grid: {{color: '#2a2d3a'}}
         }},
