@@ -653,11 +653,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   <div class="stat orange"><div class="stat-value">{ndz}</div><div class="stat-label">НДЗ</div></div>
   <div class="stat blue"><div class="stat-value">{offer_ozv}</div><div class="stat-label">Оффер озвучен</div></div>
   <div class="stat blue"><div class="stat-value">{delayed}</div><div class="stat-label">Отложенный спрос</div></div>
-  <div class="stat purple"><div class="stat-value">{excursion}</div><div class="stat-label">Экскурсия</div></div>
   <div class="stat purple"><div class="stat-value">{invoiced}</div><div class="stat-label">Выставлен счет</div></div>
   <div class="stat green"><div class="stat-value">{sales}</div><div class="stat-label">Продажи</div></div>
   <div class="stat"><div class="stat-value">{conv_pct}%</div><div class="stat-label">Конверсия в продажу</div></div>
-  <div class="stat"><div class="stat-value">{price}</div><div class="stat-label">Сумма сделок, ₽</div></div>
+  <div class="stat" style="min-width:180px"><div class="stat-value" style="font-size:20px">{price}</div><div class="stat-label">Сумма сделок, ₽</div></div>
 </div>
 
 <h2>Лиды по дням (с 6 июня)</h2>
