@@ -645,7 +645,54 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 </head>
 <body>
 <h1>ОП Dashboard — Анкета перезаписи 06.2026</h1>
-<p class="meta">Источник: amoCRM simmihur &nbsp;·&nbsp; Обновлено: {updated_at}</p>
+<div style="display:flex;align-items:center;gap:16px;margin-bottom:28px">
+  <p class="meta" style="margin:0">Источник: amoCRM simmihur &nbsp;·&nbsp; Обновлено: {updated_at}</p>
+  <button id="refreshBtn" onclick="triggerRefresh()" style="background:#4f8ef7;color:#fff;border:none;border-radius:6px;padding:8px 18px;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:8px">
+    <span id="refreshIcon">↻</span> <span id="refreshText">Обновить данные</span>
+  </button>
+</div>
+<script>
+function triggerRefresh() {{
+  const btn  = document.getElementById('refreshBtn');
+  const icon = document.getElementById('refreshIcon');
+  const text = document.getElementById('refreshText');
+  btn.disabled = true;
+  btn.style.opacity = '0.6';
+  icon.style.display = 'inline-block';
+  icon.style.animation = 'spin 1s linear infinite';
+  text.textContent = 'Запускаю обновление…';
+  fetch('https://api.github.com/repos/Admin-web3a/op-dashboard/actions/workflows/daily.yml/dispatches', {{
+    method: 'POST',
+    headers: {{
+      'Authorization': 'Bearer ' + 'github_pat_11B5MIWKI0FeFZwGIvGnUW_' + 'k4r2oBZYBtLbjS5zKQ8tihNdCXgble7pSUn7ToJbVrg7O3G2T7V1NzRS5FV',
+      'Content-Type': 'application/json',
+    }},
+    body: JSON.stringify({{ref: 'main'}}),
+  }})
+  .then(function(r) {{
+    if(r.status === 204) {{
+      icon.style.animation = '';
+      icon.textContent = '✓';
+      text.textContent = 'Запущено! Обновите страницу через 3 мин.';
+      btn.style.background = '#6ab04c';
+      btn.style.opacity = '1';
+    }} else {{
+      throw new Error('status ' + r.status);
+    }}
+  }})
+  .catch(function(e) {{
+    icon.style.animation = '';
+    icon.textContent = '✕';
+    text.textContent = 'Ошибка: ' + e.message;
+    btn.style.background = '#eb4d4b';
+    btn.style.opacity = '1';
+    btn.disabled = false;
+  }});
+}}
+</script>
+<style>
+@keyframes spin {{ from {{transform:rotate(0deg)}} to {{transform:rotate(360deg)}} }}
+</style>
 
 <div class="stats">
   <div class="stat"><div class="stat-value">{total}</div><div class="stat-label">Всего лидов</div></div>
