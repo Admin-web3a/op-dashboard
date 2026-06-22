@@ -518,20 +518,35 @@ def build_report():
     reason_labels = [r for r, _ in reason_counts.most_common()]
     reason_values = [reason_counts[r] for r in reason_labels]
 
-    # Per-manager revenue (sum of prices of won deals)
-    mgr_revenue = defaultdict(int)
+    # Per-manager revenue (sum of prices of won deals) and sales count
+    mgr_revenue     = defaultdict(int)
+    mgr_sales_cnt   = defaultdict(int)
     for lead in leads:
         uid = lead.get("responsible_user_id")
         if uid not in MANAGERS:
             continue
         grp = statuses.get(lead.get("status_id"), {}).get("group", "")
         if grp == "sale":
-            mgr_revenue[uid] += lead.get("price") or 0
+            mgr_revenue[uid]   += lead.get("price") or 0
+            mgr_sales_cnt[uid] += 1
 
     # Sort by revenue descending
     sorted_revenue = sorted(mgr_revenue.items(), key=lambda x: x[1], reverse=True)
     revenue_mgr_ids  = [str(uid) for uid, _ in sorted_revenue]
     revenue_values   = [rev for _, rev in sorted_revenue]
+
+    # Per-manager sales count (same order as revenue)
+    mgr_sales_count = {str(uid): mgr_sales_cnt.get(uid, 0) for uid in MANAGERS}
+
+    # Per-manager avg ticket
+    mgr_avg_price = {
+        str(uid): round(mgr_revenue[uid] / mgr_sales_cnt[uid]) if mgr_sales_cnt.get(uid) else 0
+        for uid in MANAGERS
+    }
+
+    # Overall avg ticket
+    total_sales_count = sum(mgr_sales_cnt.values())
+    avg_price = round(total_price / total_sales_count) if total_sales_count else 0
 
     # Per-manager conversion: Взято в работу → Продажи
     # Denominator uses same ATTR_FUNNEL logic as "Взято в работу" stage
@@ -586,6 +601,9 @@ def build_report():
         "reason_values":    reason_values,
         "revenue_mgr_ids":  revenue_mgr_ids,
         "revenue_values":   revenue_values,
+        "mgr_sales_count":  mgr_sales_count,
+        "mgr_avg_price":    mgr_avg_price,
+        "avg_price":        avg_price,
         "mgr_conv":         mgr_conv_data,
         "cumulative_funnel": cumulative_funnel,
         "cohort_table":      cohort_table,
@@ -704,6 +722,7 @@ function triggerRefresh() {{
   <div class="stat green"><div class="stat-value">{sales}</div><div class="stat-label">Продажи</div></div>
   <div class="stat"><div class="stat-value">{conv_pct}%</div><div class="stat-label">Конверсия в продажу</div></div>
   <div class="stat" style="min-width:180px"><div class="stat-value" style="font-size:20px">{price}</div><div class="stat-label">Сумма сделок, ₽</div></div>
+  <div class="stat" style="min-width:180px"><div class="stat-value" style="font-size:20px">{avg_price}</div><div class="stat-label">Средний чек, ₽</div></div>
 </div>
 
 <h2>Лиды по дням (с 6 июня)</h2>
@@ -741,14 +760,24 @@ function triggerRefresh() {{
 <h2>Просроченные задачи по менеджерам</h2>
 <div class="chart-card" style="height:600px"><canvas id="overdueChart"></canvas></div>
 
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start">
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start;margin-bottom:16px">
   <div>
     <h2>Выручка по менеджерам</h2>
     <div class="chart-card" style="height:360px"><canvas id="revenueChart"></canvas></div>
   </div>
   <div>
+    <h2>Количество продаж по менеджерам</h2>
+    <div class="chart-card" style="height:360px"><canvas id="mgrSalesChart"></canvas></div>
+  </div>
+</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start">
+  <div>
     <h2>Конверсия Взято в работу → Продажи</h2>
     <div class="chart-card" style="height:360px"><canvas id="mgrConvChart"></canvas></div>
+  </div>
+  <div>
+    <h2>Средний чек по менеджерам</h2>
+    <div class="chart-card" style="height:360px"><canvas id="mgrAvgChart"></canvas></div>
   </div>
 </div>
 
@@ -1134,6 +1163,38 @@ new Chart(document.getElementById("revenueChart"),{{
   }}
 }});
 
+// Sales count by manager
+(function(){{
+  const sc = DATA.mgr_sales_count;
+  const ids = Object.keys(sc)
+    .filter(id => DATA.managers[id])
+    .sort((a,b) => sc[b] - sc[a]);
+  if(!ids.length) return;
+  new Chart(document.getElementById('mgrSalesChart'), {{
+    type: 'bar',
+    data: {{
+      labels: ids.map(id => DATA.managers[id]),
+      datasets: [{{
+        label: 'Продаж',
+        data: ids.map(id => sc[id]),
+        backgroundColor: '#4f8ef7',
+        borderRadius: 4,
+      }}]
+    }},
+    options: {{
+      maintainAspectRatio: false,
+      plugins: {{
+        legend: {{display: false}},
+        tooltip: {{callbacks: {{label: function(c){{ return ' ' + c.raw + ' продаж'; }}}}}}
+      }},
+      scales: {{
+        x: {{ticks: {{color: '#e8eaf0', maxRotation: 30}}, grid: {{color: '#1e2a3a'}}}},
+        y: {{beginAtZero: true, ticks: {{color: '#e8eaf0', stepSize: 1}}, grid: {{color: '#1e2a3a'}}}}
+      }}
+    }}
+  }});
+}})();
+
 // Manager conversion: Взято в работу → Продажи
 (function(){{
   const conv = DATA.mgr_conv;
@@ -1175,6 +1236,44 @@ new Chart(document.getElementById("revenueChart"),{{
           grid: {{color: '#2a2d3a'}}
         }},
         y: {{ticks: {{color: '#e8eaf0', font: {{size: 12}}}}, grid: {{color: '#2a2d3a'}}}}
+      }}
+    }}
+  }});
+}})();
+
+// Avg ticket by manager
+(function(){{
+  const ap = DATA.mgr_avg_price;
+  const ids = Object.keys(ap)
+    .filter(id => DATA.managers[id] && ap[id] > 0)
+    .sort((a,b) => ap[b] - ap[a]);
+  if(!ids.length) return;
+  new Chart(document.getElementById('mgrAvgChart'), {{
+    type: 'bar',
+    data: {{
+      labels: ids.map(id => DATA.managers[id]),
+      datasets: [{{
+        label: 'Средний чек, ₽',
+        data: ids.map(id => ap[id]),
+        backgroundColor: '#a29bfe',
+        borderRadius: 4,
+      }}]
+    }},
+    options: {{
+      maintainAspectRatio: false,
+      plugins: {{
+        legend: {{display: false}},
+        tooltip: {{callbacks: {{
+          label: function(c){{ return ' ' + c.raw.toLocaleString('ru-RU') + ' ₽'; }}
+        }}}}
+      }},
+      scales: {{
+        x: {{ticks: {{color: '#e8eaf0', maxRotation: 30}}, grid: {{color: '#1e2a3a'}}}},
+        y: {{
+          beginAtZero: true,
+          ticks: {{color: '#e8eaf0', callback: function(v){{ return v.toLocaleString('ru-RU') + ' ₽'; }}}},
+          grid: {{color: '#1e2a3a'}}
+        }}
       }}
     }}
   }});
@@ -1245,7 +1344,8 @@ def generate_html(report):
     sales = gc.get("sale", 0)
     total = report["total"]
     conv_pct = round(sales / total * 100, 2) if total else 0
-    price_fmt = f"{report['total_price']:,}".replace(",", "\u00a0")
+    price_fmt     = f"{report['total_price']:,}".replace(",", "\u00a0")
+    avg_price_fmt = f"{report['avg_price']:,}".replace(",", "\u00a0")
 
     json_data = json.dumps({
         "sorted_statuses": report["sorted_statuses"],
@@ -1268,6 +1368,8 @@ def generate_html(report):
         "reason_values":   report["reason_values"],
         "revenue_mgr_ids":  report["revenue_mgr_ids"],
         "revenue_values":   report["revenue_values"],
+        "mgr_sales_count":  report["mgr_sales_count"],
+        "mgr_avg_price":    report["mgr_avg_price"],
         "mgr_conv":         report["mgr_conv"],
         "cumulative_funnel": report["cumulative_funnel"],
         "cohort_table":      report["cohort_table"],
@@ -1287,6 +1389,7 @@ def generate_html(report):
         sales      = sales,
         conv_pct   = conv_pct,
         price      = price_fmt,
+        avg_price  = avg_price_fmt,
         json_data  = json_data,
     )
 
