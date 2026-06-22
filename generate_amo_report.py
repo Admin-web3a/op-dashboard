@@ -1231,7 +1231,7 @@ new Chart(document.getElementById("revenueChart"),{{
       }},
       scales: {{
         x: {{
-          beginAtZero: true, max: 20,
+          beginAtZero: true, max: 10,
           ticks: {{color: '#e8eaf0', callback: function(v){{ return v + '%'; }}}},
           grid: {{color: '#2a2d3a'}}
         }},
