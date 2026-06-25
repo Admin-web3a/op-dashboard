@@ -516,30 +516,90 @@ def build_report():
             if cid and cid not in contact_to_lead:
                 contact_to_lead[cid] = lead["id"]
     phones_map = fetch_contacts_phones(list(contact_to_lead.keys()))
-    country_counts = Counter()
+
+    # Build lead_id -> country for all further country analytics
+    lead_to_country = {}
     for cid, phone in phones_map.items():
-        country = phone_to_country(phone) if phone else "Не указан"
-        country_counts[country] += 1
-    # Leads without any contact
-    leads_with_contact = set(contact_to_lead.values())
-    no_contact = sum(1 for l in leads if l["id"] not in leads_with_contact)
-    if no_contact:
-        country_counts["Не указан"] += no_contact
+        lid = contact_to_lead.get(cid)
+        if lid:
+            lead_to_country[lid] = phone_to_country(phone) if phone else "Не указан"
+    for lead in leads:
+        if lead["id"] not in lead_to_country:
+            lead_to_country[lead["id"]] = "Не указан"
+
+    country_counts = Counter(lead_to_country.values())
+
+    # Top-10 countries list (used for all country charts)
     TOP_N = 10
     most_common = country_counts.most_common()
     if len(most_common) > TOP_N:
-        top = most_common[:TOP_N]
-        rest_count = sum(v for _, v in most_common[TOP_N:])
-        rest_n = len(most_common) - TOP_N
-        top_labels = [c for c, _ in top]
-        top_values = [v for _, v in top]
-        top_labels.append(f"Другие ({rest_n} стран)")
-        top_values.append(rest_count)
+        top      = most_common[:TOP_N]
+        rest_n   = len(most_common) - TOP_N
+        rest_lbl = f"Другие ({rest_n} стран)"
+        top_labels  = [c for c, _ in top] + [rest_lbl]
+        top_values  = [v for _, v in top] + [sum(v for _, v in most_common[TOP_N:])]
     else:
         top_labels = [c for c, _ in most_common]
         top_values = [v for _, v in most_common]
+        rest_lbl   = None
     country_labels = top_labels
     country_values = top_values
+    top_country_set = set(top_labels)  # includes rest_lbl if present
+
+    # ── Status distribution by country (100% stacked) ─────────────────────────
+    # Simplified display groups for the stacked bar
+    CSTAT_GROUPS = [
+        ("Входящие/Новые", {"incoming", "new_lead", "om"}),
+        ("В работе",       {"in_work", "contact", "qualified"}),
+        ("Оффер/Отложен",  {"offer", "delayed"}),
+        ("Продажи",        {"sale", "invoiced"}),
+        ("НДЗ",            {"ndz"}),
+        ("Потеряно",       {"lost"}),
+    ]
+    CSTAT_COLORS = ["#74b9ff", "#00cec9", "#f5a623", "#6ab04c", "#fdcb6e", "#636e72"]
+
+    # country -> {group_name: count}
+    cstat_raw = defaultdict(Counter)
+    for lead in leads:
+        country = lead_to_country.get(lead["id"], "Не указан")
+        c_key = country if country in top_country_set else rest_lbl or "Другие"
+        grp = statuses.get(lead.get("status_id"), {}).get("group", "")
+        for gname, gset in CSTAT_GROUPS:
+            if grp in gset:
+                cstat_raw[c_key][gname] += 1
+                break
+
+    # Build arrays for Chart.js: one dataset per status group, ordered like top_labels
+    cstat_datasets = []
+    for (gname, _), color in zip(CSTAT_GROUPS, CSTAT_COLORS):
+        cstat_datasets.append({
+            "label": gname,
+            "color": color,
+            "data":  [cstat_raw[c].get(gname, 0) for c in country_labels],
+        })
+
+    # ── Manager × country heatmap ──────────────────────────────────────────────
+    # Top-5 countries (real ones, not "Другие") for column headers
+    TOP_MGR_COUNTRIES = 5
+    mgr_country_cols = [c for c in country_labels if c != rest_lbl][:TOP_MGR_COUNTRIES]
+    if rest_lbl:
+        mgr_country_cols.append("Другие")
+
+    mgr_country_raw = defaultdict(Counter)
+    for lead in leads:
+        uid = lead.get("responsible_user_id")
+        if uid not in MANAGERS:
+            continue
+        country = lead_to_country.get(lead["id"], "Не указан")
+        if country in {c for c in mgr_country_cols if c != "Другие"}:
+            mgr_country_raw[str(uid)][country] += 1
+        else:
+            mgr_country_raw[str(uid)]["Другие"] += 1
+
+    mgr_country_data = {
+        str(uid): {c: mgr_country_raw[str(uid)].get(c, 0) for c in mgr_country_cols}
+        for uid in MANAGERS
+    }
 
     print("Computing conversion (Взято → Контакт) by creation date…")
     _tz_msk     = datetime.timezone(datetime.timedelta(hours=3))
@@ -759,6 +819,9 @@ def build_report():
         "reason_values":    reason_values,
         "country_labels":   country_labels,
         "country_values":   country_values,
+        "cstat_datasets":   cstat_datasets,
+        "mgr_country_cols": mgr_country_cols,
+        "mgr_country_data": mgr_country_data,
         "tariff_labels":    tariff_labels,
         "tariff_values":    tariff_values,
         "revenue_mgr_ids":  revenue_mgr_ids,
@@ -959,6 +1022,14 @@ function triggerRefresh() {{
     <h2>Лиды по странам</h2>
     <div class="chart-card" style="height:380px"><canvas id="countryChart"></canvas></div>
   </div>
+</div>
+
+<h2>Статусы по странам</h2>
+<div class="chart-card" style="height:420px"><canvas id="countryStatusChart"></canvas></div>
+
+<h2>Лиды по менеджерам × странам</h2>
+<div class="chart-card" style="overflow-x:auto;padding:16px">
+  <table id="mgrCountryTable" style="width:100%;border-collapse:collapse;font-size:13px"></table>
 </div>
 
 <h2>Причины закрытия сделок</h2>
@@ -1560,6 +1631,101 @@ new Chart(document.getElementById("revenueChart"),{{
   }});
 }})();
 
+// Country status 100% stacked horizontal bar
+(function(){{
+  const ds = DATA.cstat_datasets;
+  const countries = DATA.country_labels;
+  if(!ds || !countries.length) return;
+  // Build 100%-normalised data per country
+  const totals = countries.map((_, ci) => ds.reduce((s, d) => s + (d.data[ci] || 0), 0));
+  const datasets = ds.map(d => ({{
+    label: d.label,
+    data: d.data.map((v, ci) => totals[ci] ? Math.round(v / totals[ci] * 100) : 0),
+    raw:  d.data,
+    backgroundColor: d.color,
+    borderRadius: 2,
+  }}));
+  // Reverse countries so largest is on top
+  const rev = countries.slice().reverse();
+  datasets.forEach(d => {{ d.data = d.data.slice().reverse(); d.raw = d.raw.slice().reverse(); }});
+  new Chart(document.getElementById('countryStatusChart'), {{
+    type: 'bar',
+    data: {{ labels: rev, datasets: datasets }},
+    options: {{
+      indexAxis: 'y',
+      maintainAspectRatio: false,
+      plugins: {{
+        legend: {{labels: {{color: '#e8eaf0', boxWidth: 14}}}},
+        tooltip: {{
+          callbacks: {{
+            label: function(c) {{
+              const raw = c.dataset.raw[c.dataIndex];
+              return ' ' + c.dataset.label + ': ' + raw + ' (' + c.raw + '%)';
+            }}
+          }}
+        }}
+      }},
+      scales: {{
+        x: {{
+          stacked: true,
+          min: 0, max: 100,
+          ticks: {{color: '#e8eaf0', callback: v => v + '%'}},
+          grid: {{color: '#1e2a3a'}}
+        }},
+        y: {{
+          stacked: true,
+          ticks: {{color: '#e8eaf0', font: {{size: 12}}}},
+          grid: {{color: '#1e2a3a'}}
+        }}
+      }}
+    }}
+  }});
+}})();
+
+// Manager × country heatmap table
+(function(){{
+  const cols  = DATA.mgr_country_cols;
+  const data  = DATA.mgr_country_data;
+  const mgrs  = DATA.managers;
+  const table = document.getElementById('mgrCountryTable');
+  if(!table || !cols || !cols.length) return;
+
+  // Find max per column for colour scaling
+  const colMax = cols.map(col =>
+    Math.max(1, ...Object.values(data).map(r => r[col] || 0))
+  );
+
+  // Header
+  let html = '<thead><tr><th style="text-align:left;padding:6px 10px;color:#a0aec0;border-bottom:1px solid #2a2d3a">Менеджер</th>';
+  cols.forEach(col => {{
+    html += '<th style="text-align:center;padding:6px 10px;color:#a0aec0;border-bottom:1px solid #2a2d3a">' + col + '</th>';
+  }});
+  html += '<th style="text-align:center;padding:6px 10px;color:#a0aec0;border-bottom:1px solid #2a2d3a">Итого</th></tr></thead><tbody>';
+
+  // Sort managers by total leads descending
+  const mgrIds = Object.keys(data).filter(id => mgrs[id])
+    .sort((a,b) => cols.reduce((s,c) => s + (data[b][c]||0) - (data[a][c]||0), 0));
+
+  mgrIds.forEach(id => {{
+    const row = data[id];
+    const total = cols.reduce((s,c) => s + (row[c]||0), 0);
+    html += '<tr>';
+    html += '<td style="padding:6px 10px;color:#e8eaf0;white-space:nowrap">' + mgrs[id] + '</td>';
+    cols.forEach((col, ci) => {{
+      const v = row[col] || 0;
+      const intensity = colMax[ci] > 0 ? v / colMax[ci] : 0;
+      const bg = 'rgba(79,142,247,' + (0.08 + intensity * 0.72).toFixed(2) + ')';
+      const textColor = intensity > 0.5 ? '#fff' : '#e8eaf0';
+      html += '<td style="text-align:center;padding:6px 10px;background:' + bg + ';color:' + textColor + ';font-weight:' + (v > 0 ? '600' : '400') + '">' + (v || '—') + '</td>';
+    }});
+    html += '<td style="text-align:center;padding:6px 10px;color:#a0aec0;font-weight:600">' + total + '</td>';
+    html += '</tr>';
+  }});
+
+  html += '</tbody>';
+  table.innerHTML = html;
+}})();
+
 // Closure reasons horizontal bar
 new Chart(document.getElementById("reasonChart"),{{
   type:"bar",
@@ -1649,6 +1815,9 @@ def generate_html(report):
         "reason_values":   report["reason_values"],
         "country_labels":   report["country_labels"],
         "country_values":   report["country_values"],
+        "cstat_datasets":   report["cstat_datasets"],
+        "mgr_country_cols": report["mgr_country_cols"],
+        "mgr_country_data": report["mgr_country_data"],
         "tariff_labels":    report["tariff_labels"],
         "tariff_values":    report["tariff_values"],
         "revenue_mgr_ids":  report["revenue_mgr_ids"],
