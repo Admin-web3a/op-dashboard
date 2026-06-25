@@ -446,7 +446,7 @@ def phone_to_country(raw_phone: str) -> str:
     for prefix, country in PHONE_COUNTRIES:
         if digits.startswith(prefix):
             return country
-    return "Другое"
+    return "Не определено"
 
 
 def fetch_contacts_phones(contact_ids: list) -> dict:
@@ -525,26 +525,32 @@ def build_report():
             lead_to_country[lid] = phone_to_country(phone) if phone else "Не указан"
     for lead in leads:
         if lead["id"] not in lead_to_country:
-            lead_to_country[lead["id"]] = "Не указан"
+            lead_to_country[lead["id"]] = "Не определено"
 
     country_counts = Counter(lead_to_country.values())
 
-    # Top-10 countries list (used for all country charts)
-    TOP_N = 10
-    most_common = country_counts.most_common()
-    if len(most_common) > TOP_N:
-        top      = most_common[:TOP_N]
-        rest_n   = len(most_common) - TOP_N
-        rest_lbl = f"Другие ({rest_n} стран)"
-        top_labels  = [c for c, _ in top] + [rest_lbl]
-        top_values  = [v for _, v in top] + [sum(v for _, v in most_common[TOP_N:])]
-    else:
-        top_labels = [c for c, _ in most_common]
-        top_values = [v for _, v in most_common]
-        rest_lbl   = None
+    # Top-10 countries list (used for all country charts).
+    # "Не определено" is treated as part of the "tail" bucket so it merges cleanly.
+    TOP_N    = 10
+    REST_LBL = "Прочие"
+    # Separate "Не определено" from real countries before ranking
+    undefined_count = country_counts.pop("Не определено", 0)
+    most_common = country_counts.most_common()  # real countries only
+    top_real = most_common[:TOP_N]
+    rest_real = most_common[TOP_N:]
+    rest_total = sum(v for _, v in rest_real) + undefined_count
+    top_labels = [c for c, _ in top_real]
+    top_values = [v for _, v in top_real]
+    if rest_total:
+        top_labels.append(REST_LBL)
+        top_values.append(rest_total)
     country_labels = top_labels
     country_values = top_values
-    top_country_set = set(top_labels)  # includes rest_lbl if present
+    # Restore counter for other uses
+    if undefined_count:
+        country_counts["Не определено"] = undefined_count
+    rest_lbl = REST_LBL if rest_total else None
+    top_country_set = set(top_labels)
 
     # ── Status distribution by country (100% stacked) ─────────────────────────
     # Simplified display groups for the stacked bar
@@ -562,7 +568,7 @@ def build_report():
     cstat_raw = defaultdict(Counter)
     for lead in leads:
         country = lead_to_country.get(lead["id"], "Не указан")
-        c_key = country if country in top_country_set else rest_lbl or "Другие"
+        c_key = country if country in top_country_set else REST_LBL
         grp = statuses.get(lead.get("status_id"), {}).get("group", "")
         for gname, gset in CSTAT_GROUPS:
             if grp in gset:
@@ -590,11 +596,11 @@ def build_report():
         uid = lead.get("responsible_user_id")
         if uid not in MANAGERS:
             continue
-        country = lead_to_country.get(lead["id"], "Не указан")
-        if country in {c for c in mgr_country_cols if c != "Другие"}:
+        country = lead_to_country.get(lead["id"], "Не определено")
+        if country in {c for c in mgr_country_cols if c != REST_LBL}:
             mgr_country_raw[str(uid)][country] += 1
         else:
-            mgr_country_raw[str(uid)]["Другие"] += 1
+            mgr_country_raw[str(uid)][REST_LBL] += 1
 
     mgr_country_data = {
         str(uid): {c: mgr_country_raw[str(uid)].get(c, 0) for c in mgr_country_cols}
