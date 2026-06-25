@@ -150,7 +150,7 @@ def fetch_filtered_leads(statuses):
     consecutive_empty = 0
     page = 1
     while True:
-        path = (f"leads?limit=250&page={page}"
+        path = (f"leads?limit=250&page={page}&with=contacts"
                 f"&order[updated_at]=desc&filter[updated_at][from]={UPDATED_FROM}")
         data = api_get(path)
         batch = data.get("_embedded", {}).get("leads", [])
@@ -365,6 +365,113 @@ def fetch_overdue_tasks(filtered_lead_ids):
             counts[uid] += 1
     return dict(counts)
 
+# ── Phone prefix → country mapping ───────────────────────────────────────────
+
+# Ordered longest-prefix-first so greedy match works correctly
+PHONE_COUNTRIES = [
+    # CIS & post-Soviet
+    ("7700", "Казахстан"), ("7701", "Казахстан"), ("7702", "Казахстан"),
+    ("7705", "Казахстан"), ("7706", "Казахстан"), ("7707", "Казахстан"),
+    ("7708", "Казахстан"), ("7709", "Казахстан"),
+    ("7710", "Казахстан"), ("7711", "Казахстан"), ("7712", "Казахстан"),
+    ("7713", "Казахстан"), ("7714", "Казахстан"), ("7715", "Казахстан"),
+    ("7716", "Казахстан"), ("7717", "Казахстан"), ("7718", "Казахстан"),
+    ("7719", "Казахстан"), ("7721", "Казахстан"), ("7722", "Казахстан"),
+    ("7723", "Казахстан"), ("7724", "Казахстан"), ("7725", "Казахстан"),
+    ("7726", "Казахстан"), ("7727", "Казахстан"), ("7728", "Казахстан"),
+    ("7729", "Казахстан"),
+    ("7",    "Россия"),
+    ("380",  "Украина"),
+    ("375",  "Беларусь"),
+    ("374",  "Армения"),
+    ("994",  "Азербайджан"),
+    ("998",  "Узбекистан"),
+    ("996",  "Кыргызстан"),
+    ("992",  "Таджикистан"),
+    ("993",  "Туркменистан"),
+    ("995",  "Грузия"),
+    ("373",  "Молдова"),
+    # Europe & other popular
+    ("972",  "Израиль"),
+    ("971",  "ОАЭ"),
+    ("90",   "Турция"),
+    ("49",   "Германия"),
+    ("44",   "Великобритания"),
+    ("33",   "Франция"),
+    ("39",   "Италия"),
+    ("34",   "Испания"),
+    ("48",   "Польша"),
+    ("420",  "Чехия"),
+    ("36",   "Венгрия"),
+    ("40",   "Румыния"),
+    ("31",   "Нидерланды"),
+    ("32",   "Бельгия"),
+    ("41",   "Швейцария"),
+    ("43",   "Австрия"),
+    ("46",   "Швеция"),
+    ("47",   "Норвегия"),
+    ("45",   "Дания"),
+    ("358",  "Финляндия"),
+    ("352",  "Люксембург"),
+    ("386",  "Словения"),
+    ("385",  "Хорватия"),
+    ("381",  "Сербия"),
+    ("370",  "Литва"),
+    ("371",  "Латвия"),
+    ("372",  "Эстония"),
+    ("966",  "Саудовская Аравия"),
+    ("974",  "Катар"),
+    ("965",  "Кувейт"),
+    ("62",   "Индонезия"),
+    ("60",   "Малайзия"),
+    ("65",   "Сингапур"),
+    ("66",   "Таиланд"),
+    ("84",   "Вьетнам"),
+    ("82",   "Южная Корея"),
+    ("81",   "Япония"),
+    ("86",   "Китай"),
+    ("91",   "Индия"),
+    ("1",    "США / Канада"),
+    ("55",   "Бразилия"),
+    ("52",   "Мексика"),
+    ("54",   "Аргентина"),
+    ("61",   "Австралия"),
+]
+
+def phone_to_country(raw_phone: str) -> str:
+    """Normalise phone to digits-only and match longest prefix."""
+    digits = "".join(c for c in raw_phone if c.isdigit())
+    # Strip leading zeros (some CRMs store 00380... instead of 380...)
+    digits = digits.lstrip("0") or digits
+    for prefix, country in PHONE_COUNTRIES:
+        if digits.startswith(prefix):
+            return country
+    return "Другое"
+
+
+def fetch_contacts_phones(contact_ids: list) -> dict:
+    """Batch-fetch contacts by IDs and return {contact_id: phone_or_None}."""
+    result = {}
+    batch_size = 250
+    for i in range(0, len(contact_ids), batch_size):
+        chunk = contact_ids[i : i + batch_size]
+        qs = "&".join(f"filter[id][]={cid}" for cid in chunk)
+        try:
+            data = api_get(f"contacts?limit={batch_size}&{qs}")
+        except Exception:
+            continue
+        for contact in data.get("_embedded", {}).get("contacts", []):
+            phone = None
+            for cf in (contact.get("custom_fields_values") or []):
+                if cf.get("field_code") == "PHONE" or cf.get("field_name") == "Телефон":
+                    vals = cf.get("values") or []
+                    if vals:
+                        phone = vals[0].get("value")
+                        break
+            result[contact["id"]] = phone
+    return result
+
+
 # ── Build ─────────────────────────────────────────────────────────────────────
 
 def build_report():
@@ -399,6 +506,27 @@ def build_report():
     print("Fetching overdue tasks…")
     filtered_lead_ids = {lead["id"] for lead in leads if lead.get("id")}
     overdue = fetch_overdue_tasks(filtered_lead_ids)
+
+    print("Fetching contacts for country distribution…")
+    # Collect unique contact IDs from all leads (leads API returns _embedded.contacts)
+    contact_to_lead = {}  # contact_id -> lead_id (first seen)
+    for lead in leads:
+        for c in (lead.get("_embedded", {}).get("contacts") or []):
+            cid = c.get("id")
+            if cid and cid not in contact_to_lead:
+                contact_to_lead[cid] = lead["id"]
+    phones_map = fetch_contacts_phones(list(contact_to_lead.keys()))
+    country_counts = Counter()
+    for cid, phone in phones_map.items():
+        country = phone_to_country(phone) if phone else "Не указан"
+        country_counts[country] += 1
+    # Leads without any contact
+    leads_with_contact = set(contact_to_lead.values())
+    no_contact = sum(1 for l in leads if l["id"] not in leads_with_contact)
+    if no_contact:
+        country_counts["Не указан"] += no_contact
+    country_labels = [c for c, _ in country_counts.most_common()]
+    country_values = [country_counts[c] for c in country_labels]
 
     print("Computing conversion (Взято → Контакт) by creation date…")
     _tz_msk     = datetime.timezone(datetime.timedelta(hours=3))
@@ -616,6 +744,8 @@ def build_report():
         "conv_pct":         conv_pct,
         "reason_labels":    reason_labels,
         "reason_values":    reason_values,
+        "country_labels":   country_labels,
+        "country_values":   country_values,
         "tariff_labels":    tariff_labels,
         "tariff_values":    tariff_values,
         "revenue_mgr_ids":  revenue_mgr_ids,
@@ -800,8 +930,16 @@ function triggerRefresh() {{
   </div>
 </div>
 
-<h2>Продажи по тарифам</h2>
-<div class="chart-card" style="height:300px"><canvas id="tariffChart"></canvas></div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start">
+  <div>
+    <h2>Продажи по тарифам</h2>
+    <div class="chart-card" style="height:320px"><canvas id="tariffChart"></canvas></div>
+  </div>
+  <div>
+    <h2>Лиды по странам</h2>
+    <div class="chart-card" style="height:320px"><canvas id="countryChart"></canvas></div>
+  </div>
+</div>
 
 <h2>Причины закрытия сделок</h2>
 <div class="chart-card" style="height:320px"><canvas id="reasonChart"></canvas></div>
@@ -1343,6 +1481,44 @@ new Chart(document.getElementById("revenueChart"),{{
   }});
 }})();
 
+// Country distribution — horizontal bar
+(function(){{
+  if(!DATA.country_labels || !DATA.country_labels.length) return;
+  const palette = [
+    '#4f8ef7','#6ab04c','#f5a623','#a29bfe','#fd79a8','#00cec9',
+    '#e17055','#fdcb6e','#74b9ff','#55efc4','#b2bec3','#636e72'
+  ];
+  const total = DATA.country_values.reduce((a,b)=>a+b,0);
+  new Chart(document.getElementById('countryChart'), {{
+    type: 'bar',
+    data: {{
+      labels: DATA.country_labels,
+      datasets: [{{
+        label: 'Лидов',
+        data: DATA.country_values,
+        backgroundColor: DATA.country_labels.map((_,i) => palette[i % palette.length]),
+        borderRadius: 4,
+      }}]
+    }},
+    options: {{
+      indexAxis: 'y',
+      maintainAspectRatio: false,
+      plugins: {{
+        legend: {{display: false}},
+        tooltip: {{callbacks: {{
+          label: function(c) {{
+            return ' ' + c.raw + ' лидов (' + Math.round(c.raw/total*100) + '%)';
+          }}
+        }}}}
+      }},
+      scales: {{
+        x: {{beginAtZero: true, ticks: {{color: '#e8eaf0', stepSize: 1}}, grid: {{color: '#1e2a3a'}}}},
+        y: {{ticks: {{color: '#e8eaf0', font: {{size: 12}}}}, grid: {{color: '#1e2a3a'}}}}
+      }}
+    }}
+  }});
+}})();
+
 // Closure reasons horizontal bar
 new Chart(document.getElementById("reasonChart"),{{
   type:"bar",
@@ -1430,6 +1606,8 @@ def generate_html(report):
         "conv_pct":        report["conv_pct"],
         "reason_labels":   report["reason_labels"],
         "reason_values":   report["reason_values"],
+        "country_labels":   report["country_labels"],
+        "country_values":   report["country_values"],
         "tariff_labels":    report["tariff_labels"],
         "tariff_values":    report["tariff_values"],
         "revenue_mgr_ids":  report["revenue_mgr_ids"],
