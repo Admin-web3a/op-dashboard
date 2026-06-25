@@ -606,7 +606,7 @@ def build_report():
 
     # ── Manager × country heatmap ──────────────────────────────────────────────
     # Top-5 countries (real ones, not rest bucket) for column headers
-    TOP_MGR_COUNTRIES = 5
+    TOP_MGR_COUNTRIES = 10
     mgr_country_cols = [c for c in country_labels if c != rest_lbl][:TOP_MGR_COUNTRIES]
     if rest_lbl:
         mgr_country_cols.append(REST_LBL)
