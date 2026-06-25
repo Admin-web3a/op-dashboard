@@ -522,7 +522,7 @@ def build_report():
     for cid, phone in phones_map.items():
         lid = contact_to_lead.get(cid)
         if lid:
-            lead_to_country[lid] = phone_to_country(phone) if phone else "Не указан"
+            lead_to_country[lid] = phone_to_country(phone) if phone else "Не определено"
     for lead in leads:
         if lead["id"] not in lead_to_country:
             lead_to_country[lead["id"]] = "Не определено"
