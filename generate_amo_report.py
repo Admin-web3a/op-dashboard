@@ -298,12 +298,9 @@ def compute_cohort_table(leads, statuses):
     }
 
 def compute_conversion_by_day(leads, statuses, tz_msk, start_date, today):
-    """Cumulative conversion Взято→Контакт grouped by lead creation date.
-    A lead is counted as 'reached stage X' if its current status has funnel
-    position >= X (assumes monotone progression, matching the screenshot's note).
-    """
-    day_vzv = Counter()   # date -> leads that reached "Взято в работу" or higher
-    day_kon = Counter()   # date -> leads that reached "Контакт установлен" or higher
+    """Cumulative conversion Взято→Контакт grouped by Mon–Sun week of lead creation date."""
+    week_vzv = Counter()   # week_monday -> leads that reached "Взято в работу" or higher
+    week_kon = Counter()   # week_monday -> leads that reached "Контакт установлен" or higher
 
     for lead in leads:
         grp = statuses.get(lead.get("status_id"), {}).get("group", "active")
@@ -314,26 +311,29 @@ def compute_conversion_by_day(leads, statuses, tz_msk, start_date, today):
         if not created_ts:
             continue
         lead_date = datetime.datetime.fromtimestamp(created_ts, tz=tz_msk).date()
-        day_key = lead_date.strftime("%d.%m")
-        # Only show dates from start_date onwards
         if lead_date < start_date or lead_date > today:
             continue
-        day_vzv[day_key] += 1
-        if pos >= 5:         # reached "Контакт установлен" or higher
-            day_kon[day_key] += 1
+        # Monday of the creation week
+        week_mon = lead_date - datetime.timedelta(days=lead_date.weekday())
+        week_vzv[week_mon] += 1
+        if pos >= 5:
+            week_kon[week_mon] += 1
 
-    all_dates = []
-    d = start_date
-    while d <= today:
-        all_dates.append(d.strftime("%d.%m"))
-        d += datetime.timedelta(days=1)
+    # Build sorted list of weeks from start_date's Monday up to today's Monday
+    first_mon = start_date - datetime.timedelta(days=start_date.weekday())
+    weeks = []
+    w = first_mon
+    while w <= today:
+        weeks.append(w)
+        w += datetime.timedelta(weeks=1)
 
-    vzv_vals = [day_vzv.get(d, 0) for d in all_dates]
+    week_labels = [f"{w.strftime('%d.%m')}–{(w + datetime.timedelta(days=6)).strftime('%d.%m')}" for w in weeks]
+    vzv_vals = [week_vzv.get(w, 0) for w in weeks]
     kon_pct  = [
-        round(day_kon.get(d, 0) / day_vzv[d] * 100) if day_vzv.get(d) else 0
-        for d in all_dates
+        round(week_kon.get(w, 0) / week_vzv[w] * 100) if week_vzv.get(w) else 0
+        for w in weeks
     ]
-    return all_dates, vzv_vals, kon_pct
+    return week_labels, vzv_vals, kon_pct
 
 
 def fetch_overdue_tasks(filtered_lead_ids):
@@ -1059,7 +1059,7 @@ new Chart(document.getElementById("convFunnelChart"),{{
       }}}}
     }},
     scales:{{
-      x:{{ticks:{{color:"#e8eaf0"}},grid:{{color:"#1e2a3a"}}}},
+      x:{{ticks:{{color:"#e8eaf0",maxRotation:20,font:{{size:11}}}},grid:{{color:"#1e2a3a"}}}},
       yCount:{{
         position:"left",
         beginAtZero:true,
