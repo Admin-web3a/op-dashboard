@@ -525,8 +525,21 @@ def build_report():
     no_contact = sum(1 for l in leads if l["id"] not in leads_with_contact)
     if no_contact:
         country_counts["Не указан"] += no_contact
-    country_labels = [c for c, _ in country_counts.most_common()]
-    country_values = [country_counts[c] for c in country_labels]
+    TOP_N = 10
+    most_common = country_counts.most_common()
+    if len(most_common) > TOP_N:
+        top = most_common[:TOP_N]
+        rest_count = sum(v for _, v in most_common[TOP_N:])
+        rest_n = len(most_common) - TOP_N
+        top_labels = [c for c, _ in top]
+        top_values = [v for _, v in top]
+        top_labels.append(f"Другие ({rest_n} стран)")
+        top_values.append(rest_count)
+    else:
+        top_labels = [c for c, _ in most_common]
+        top_values = [v for _, v in most_common]
+    country_labels = top_labels
+    country_values = top_values
 
     print("Computing conversion (Взято → Контакт) by creation date…")
     _tz_msk     = datetime.timezone(datetime.timedelta(hours=3))
@@ -767,6 +780,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ОП Dashboard — Анкета перезаписи 06.2026</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+<script>
+// Unregister datalabels globally — we register it per-chart where needed
+if(typeof ChartDataLabels !== 'undefined') {{
+  Chart.unregister(ChartDataLabels);
+}}
+</script>
 <style>
   :root {{
     --bg:#0f1117;--surface:#1a1d27;--border:#2a2d3a;
@@ -937,7 +957,7 @@ function triggerRefresh() {{
   </div>
   <div>
     <h2>Лиды по странам</h2>
-    <div class="chart-card" style="height:320px"><canvas id="countryChart"></canvas></div>
+    <div class="chart-card" style="height:380px"><canvas id="countryChart"></canvas></div>
   </div>
 </div>
 
@@ -1481,22 +1501,26 @@ new Chart(document.getElementById("revenueChart"),{{
   }});
 }})();
 
-// Country distribution — horizontal bar
+// Country distribution — horizontal bar (top-10 + others)
 (function(){{
   if(!DATA.country_labels || !DATA.country_labels.length) return;
+  // Reverse so largest is at top (Chart.js renders bottom-to-top for indexAxis:'y')
+  const labels = DATA.country_labels.slice().reverse();
+  const values = DATA.country_values.slice().reverse();
+  const total  = DATA.country_values.reduce((a,b)=>a+b,0);
   const palette = [
     '#4f8ef7','#6ab04c','#f5a623','#a29bfe','#fd79a8','#00cec9',
     '#e17055','#fdcb6e','#74b9ff','#55efc4','#b2bec3','#636e72'
   ];
-  const total = DATA.country_values.reduce((a,b)=>a+b,0);
   new Chart(document.getElementById('countryChart'), {{
     type: 'bar',
+    plugins: [ChartDataLabels],
     data: {{
-      labels: DATA.country_labels,
+      labels: labels,
       datasets: [{{
         label: 'Лидов',
-        data: DATA.country_values,
-        backgroundColor: DATA.country_labels.map((_,i) => palette[i % palette.length]),
+        data: values,
+        backgroundColor: labels.map((_,i) => palette[i % palette.length]),
         borderRadius: 4,
       }}]
     }},
@@ -1509,11 +1533,28 @@ new Chart(document.getElementById("revenueChart"),{{
           label: function(c) {{
             return ' ' + c.raw + ' лидов (' + Math.round(c.raw/total*100) + '%)';
           }}
-        }}}}
+        }}}},
+        datalabels: {{
+          anchor: 'end',
+          align: 'end',
+          color: '#e8eaf0',
+          font: {{size: 11, weight: 'bold'}},
+          formatter: function(val) {{
+            return val + ' (' + Math.round(val/total*100) + '%)';
+          }}
+        }}
       }},
+      layout: {{padding: {{right: 90}}}},
       scales: {{
-        x: {{beginAtZero: true, ticks: {{color: '#e8eaf0', stepSize: 1}}, grid: {{color: '#1e2a3a'}}}},
-        y: {{ticks: {{color: '#e8eaf0', font: {{size: 12}}}}, grid: {{color: '#1e2a3a'}}}}
+        x: {{
+          beginAtZero: true,
+          ticks: {{color: '#e8eaf0'}},
+          grid: {{color: '#1e2a3a'}}
+        }},
+        y: {{
+          ticks: {{color: '#e8eaf0', font: {{size: 12}}}},
+          grid: {{color: '#1e2a3a'}}
+        }}
       }}
     }}
   }});
