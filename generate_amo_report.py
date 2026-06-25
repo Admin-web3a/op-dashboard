@@ -564,25 +564,45 @@ def build_report():
     ]
     CSTAT_COLORS = ["#74b9ff", "#00cec9", "#f5a623", "#6ab04c", "#fdcb6e", "#636e72"]
 
-    # country -> {group_name: count}
-    cstat_raw = defaultdict(Counter)
-    for lead in leads:
-        country = lead_to_country.get(lead["id"], "Не указан")
-        c_key = country if country in top_country_set else REST_LBL
-        grp = statuses.get(lead.get("status_id"), {}).get("group", "")
-        for gname, gset in CSTAT_GROUPS:
-            if grp in gset:
-                cstat_raw[c_key][gname] += 1
-                break
+    def _build_cstat_datasets(lead_list):
+        """Build cstat datasets for a given list of leads (reusable for weekly slices)."""
+        raw = defaultdict(Counter)
+        for lead in lead_list:
+            country = lead_to_country.get(lead["id"], "Не определено")
+            c_key = country if country in top_country_set else REST_LBL
+            grp = statuses.get(lead.get("status_id"), {}).get("group", "")
+            for gname, gset in CSTAT_GROUPS:
+                if grp in gset:
+                    raw[c_key][gname] += 1
+                    break
+        return [
+            {"label": gname, "color": color,
+             "data": [raw[c].get(gname, 0) for c in country_labels]}
+            for (gname, _), color in zip(CSTAT_GROUPS, CSTAT_COLORS)
+        ]
 
-    # Build arrays for Chart.js: one dataset per status group, ordered like top_labels
-    cstat_datasets = []
-    for (gname, _), color in zip(CSTAT_GROUPS, CSTAT_COLORS):
-        cstat_datasets.append({
-            "label": gname,
-            "color": color,
-            "data":  [cstat_raw[c].get(gname, 0) for c in country_labels],
-        })
+    # All-time datasets
+    cstat_datasets = _build_cstat_datasets(leads)
+
+    # Weekly slices — same country_labels axis so weeks are comparable
+    cstat_tz = datetime.timezone(datetime.timedelta(hours=3))
+    cstat_start = datetime.date(2026, 6, 6)
+    week_leads_map = defaultdict(list)
+    for lead in leads:
+        ts = lead.get("created_at")
+        if not ts:
+            continue
+        ld = datetime.datetime.fromtimestamp(ts, tz=cstat_tz).date()
+        if ld < cstat_start:
+            continue
+        mon = ld - datetime.timedelta(days=ld.weekday())
+        sun = mon + datetime.timedelta(days=6)
+        wlbl = f"{mon.strftime('%d.%m')}–{sun.strftime('%d.%m')}"
+        week_leads_map[wlbl].append(lead)
+
+    cstat_by_week = {"Все время": cstat_datasets}
+    for wlbl in sorted(week_leads_map):
+        cstat_by_week[wlbl] = _build_cstat_datasets(week_leads_map[wlbl])
 
     # ── Manager × country heatmap ──────────────────────────────────────────────
     # Top-5 countries (real ones, not rest bucket) for column headers
@@ -827,6 +847,7 @@ def build_report():
         "country_labels":   country_labels,
         "country_values":   country_values,
         "cstat_datasets":   cstat_datasets,
+        "cstat_by_week":    cstat_by_week,
         "mgr_country_cols": mgr_country_cols,
         "mgr_country_data": mgr_country_data,
         "tariff_labels":    tariff_labels,
@@ -1032,6 +1053,7 @@ function triggerRefresh() {{
 </div>
 
 <h2>Статусы по странам</h2>
+<div id="cstatWeekBtns" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px"></div>
 <div class="chart-card" style="height:420px"><canvas id="countryStatusChart"></canvas></div>
 
 <h2>Лиды по менеджерам × странам</h2>
@@ -1638,26 +1660,32 @@ new Chart(document.getElementById("revenueChart"),{{
   }});
 }})();
 
-// Country status 100% stacked horizontal bar
+// Country status 100% stacked horizontal bar with week filter
 (function(){{
-  const ds = DATA.cstat_datasets;
+  const byWeek  = DATA.cstat_by_week;
   const countries = DATA.country_labels;
-  if(!ds || !countries.length) return;
-  // Build 100%-normalised data per country
-  const totals = countries.map((_, ci) => ds.reduce((s, d) => s + (d.data[ci] || 0), 0));
-  const datasets = ds.map(d => ({{
-    label: d.label,
-    data: d.data.map((v, ci) => totals[ci] ? Math.round(v / totals[ci] * 100) : 0),
-    raw:  d.data,
-    backgroundColor: d.color,
-    borderRadius: 2,
-  }}));
-  // Reverse countries so largest is on top
+  if(!byWeek || !countries.length) return;
+
+  const weekKeys = Object.keys(byWeek);
   const rev = countries.slice().reverse();
-  datasets.forEach(d => {{ d.data = d.data.slice().reverse(); d.raw = d.raw.slice().reverse(); }});
-  new Chart(document.getElementById('countryStatusChart'), {{
+
+  function buildDatasets(ds) {{
+    const totals = countries.map((_, ci) => ds.reduce((s, d) => s + (d.data[ci] || 0), 0));
+    return ds.map(d => ({{
+      label: d.label,
+      data: d.data.slice().reverse().map((v, ri) => {{
+        const ci = countries.length - 1 - ri;
+        return totals[ci] ? Math.round(v / totals[ci] * 100) : 0;
+      }}),
+      raw: d.data.slice().reverse(),
+      backgroundColor: d.color,
+      borderRadius: 2,
+    }}));
+  }}
+
+  const chart = new Chart(document.getElementById('countryStatusChart'), {{
     type: 'bar',
-    data: {{ labels: rev, datasets: datasets }},
+    data: {{ labels: rev, datasets: buildDatasets(byWeek['Все время']) }},
     options: {{
       indexAxis: 'y',
       maintainAspectRatio: false,
@@ -1673,20 +1701,39 @@ new Chart(document.getElementById("revenueChart"),{{
         }}
       }},
       scales: {{
-        x: {{
-          stacked: true,
-          min: 0, max: 100,
-          ticks: {{color: '#e8eaf0', callback: v => v + '%'}},
-          grid: {{color: '#1e2a3a'}}
-        }},
-        y: {{
-          stacked: true,
-          ticks: {{color: '#e8eaf0', font: {{size: 12}}}},
-          grid: {{color: '#1e2a3a'}}
-        }}
+        x: {{stacked:true, min:0, max:100, ticks:{{color:'#e8eaf0', callback:v=>v+'%'}}, grid:{{color:'#1e2a3a'}}}},
+        y: {{stacked:true, ticks:{{color:'#e8eaf0', font:{{size:12}}}}, grid:{{color:'#1e2a3a'}}}}
       }}
     }}
   }});
+
+  // Render week filter buttons
+  const btnWrap = document.getElementById('cstatWeekBtns');
+  let activeKey = 'Все время';
+  const btnStyle = (active) =>
+    'padding:5px 12px;border-radius:5px;border:none;cursor:pointer;font-size:12px;font-weight:600;' +
+    (active ? 'background:#4f8ef7;color:#fff;' : 'background:#1e2a3a;color:#a0aec0;');
+
+  function renderBtns() {{
+    btnWrap.innerHTML = '';
+    weekKeys.forEach(k => {{
+      const btn = document.createElement('button');
+      btn.textContent = k;
+      btn.style.cssText = btnStyle(k === activeKey);
+      btn.onclick = function() {{
+        activeKey = k;
+        const newDs = buildDatasets(byWeek[k]);
+        chart.data.datasets.forEach((ds, i) => {{
+          ds.data = newDs[i].data;
+          ds.raw  = newDs[i].raw;
+        }});
+        chart.update();
+        renderBtns();
+      }};
+      btnWrap.appendChild(btn);
+    }});
+  }}
+  renderBtns();
 }})();
 
 // Manager × country heatmap table
@@ -1823,6 +1870,7 @@ def generate_html(report):
         "country_labels":   report["country_labels"],
         "country_values":   report["country_values"],
         "cstat_datasets":   report["cstat_datasets"],
+        "cstat_by_week":    report["cstat_by_week"],
         "mgr_country_cols": report["mgr_country_cols"],
         "mgr_country_data": report["mgr_country_data"],
         "tariff_labels":    report["tariff_labels"],
