@@ -628,6 +628,28 @@ def build_report():
         for uid in MANAGERS
     }
 
+    def _build_mgr_country_data(subset):
+        raw = defaultdict(Counter)
+        known = {c for c in mgr_country_cols if c != REST_LBL}
+        for lead in subset:
+            uid = lead.get("responsible_user_id")
+            if uid not in MANAGERS:
+                continue
+            country = lead_to_country.get(lead["id"], "Не определено")
+            if country in known:
+                raw[str(uid)][country] += 1
+            else:
+                raw[str(uid)][REST_LBL] += 1
+        return {
+            str(uid): {c: raw[str(uid)].get(c, 0) for c in mgr_country_cols}
+            for uid in MANAGERS
+        }
+
+    mgr_country_by_week = {"Все время": mgr_country_data}
+    for wlbl in sorted(week_leads_map):
+        mgr_country_by_week[wlbl] = _build_mgr_country_data(week_leads_map[wlbl])
+
+
     print("Computing conversion (Взято → Контакт) by creation date…")
     _tz_msk     = datetime.timezone(datetime.timedelta(hours=3))
     _start_date = datetime.date(2026, 6, 6)
@@ -848,8 +870,9 @@ def build_report():
         "country_values":   country_values,
         "cstat_datasets":   cstat_datasets,
         "cstat_by_week":    cstat_by_week,
-        "mgr_country_cols": mgr_country_cols,
-        "mgr_country_data": mgr_country_data,
+        "mgr_country_cols":     mgr_country_cols,
+        "mgr_country_data":     mgr_country_data,
+        "mgr_country_by_week":  mgr_country_by_week,
         "tariff_labels":    tariff_labels,
         "tariff_values":    tariff_values,
         "revenue_mgr_ids":  revenue_mgr_ids,
@@ -1057,6 +1080,7 @@ function triggerRefresh() {{
 <div class="chart-card" style="height:420px"><canvas id="countryStatusChart"></canvas></div>
 
 <h2>Лиды по менеджерам × странам</h2>
+<div id="mgrCountryWeekBtns" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px"></div>
 <div class="chart-card" style="overflow-x:auto;padding:16px">
   <table id="mgrCountryTable" style="width:100%;border-collapse:collapse;font-size:13px"></table>
 </div>
@@ -1736,48 +1760,72 @@ new Chart(document.getElementById("revenueChart"),{{
   renderBtns();
 }})();
 
-// Manager × country heatmap table
+// Manager × country heatmap table with week filter
 (function(){{
-  const cols  = DATA.mgr_country_cols;
-  const data  = DATA.mgr_country_data;
-  const mgrs  = DATA.managers;
-  const table = document.getElementById('mgrCountryTable');
-  if(!table || !cols || !cols.length) return;
+  const cols    = DATA.mgr_country_cols;
+  const byWeek  = DATA.mgr_country_by_week;
+  const mgrs    = DATA.managers;
+  const table   = document.getElementById('mgrCountryTable');
+  const btnWrap = document.getElementById('mgrCountryWeekBtns');
+  if(!table || !cols || !cols.length || !byWeek) return;
 
-  // Find max per column for colour scaling
-  const colMax = cols.map(col =>
-    Math.max(1, ...Object.values(data).map(r => r[col] || 0))
-  );
+  const weekKeys  = Object.keys(byWeek);
+  let activeKey   = 'Все время';
 
-  // Header
-  let html = '<thead><tr><th style="text-align:left;padding:6px 10px;color:#a0aec0;border-bottom:1px solid #2a2d3a">Менеджер</th>';
-  cols.forEach(col => {{
-    html += '<th style="text-align:center;padding:6px 10px;color:#a0aec0;border-bottom:1px solid #2a2d3a">' + col + '</th>';
-  }});
-  html += '<th style="text-align:center;padding:6px 10px;color:#a0aec0;border-bottom:1px solid #2a2d3a">Итого</th></tr></thead><tbody>';
+  const btnStyle = (active) =>
+    'padding:5px 12px;border-radius:5px;border:none;cursor:pointer;font-size:12px;font-weight:600;' +
+    (active ? 'background:#4f8ef7;color:#fff;' : 'background:#1e2a3a;color:#a0aec0;');
 
-  // Sort managers by total leads descending
-  const mgrIds = Object.keys(data).filter(id => mgrs[id])
-    .sort((a,b) => cols.reduce((s,c) => s + (data[b][c]||0) - (data[a][c]||0), 0));
+  function buildTable(data) {{
+    const colMax = cols.map(col =>
+      Math.max(1, ...Object.values(data).map(r => r[col] || 0))
+    );
 
-  mgrIds.forEach(id => {{
-    const row = data[id];
-    const total = cols.reduce((s,c) => s + (row[c]||0), 0);
-    html += '<tr>';
-    html += '<td style="padding:6px 10px;color:#e8eaf0;white-space:nowrap">' + mgrs[id] + '</td>';
-    cols.forEach((col, ci) => {{
-      const v = row[col] || 0;
-      const intensity = colMax[ci] > 0 ? v / colMax[ci] : 0;
-      const bg = 'rgba(79,142,247,' + (0.08 + intensity * 0.72).toFixed(2) + ')';
-      const textColor = intensity > 0.5 ? '#fff' : '#e8eaf0';
-      html += '<td style="text-align:center;padding:6px 10px;background:' + bg + ';color:' + textColor + ';font-weight:' + (v > 0 ? '600' : '400') + '">' + (v || '—') + '</td>';
+    let h = '<thead><tr><th style="text-align:left;padding:6px 10px;color:#a0aec0;border-bottom:1px solid #2a2d3a">Менеджер</th>';
+    cols.forEach(col => {{
+      h += '<th style="text-align:center;padding:6px 10px;color:#a0aec0;border-bottom:1px solid #2a2d3a">' + col + '</th>';
     }});
-    html += '<td style="text-align:center;padding:6px 10px;color:#a0aec0;font-weight:600">' + total + '</td>';
-    html += '</tr>';
-  }});
+    h += '<th style="text-align:center;padding:6px 10px;color:#a0aec0;border-bottom:1px solid #2a2d3a">Итого</th></tr></thead><tbody>';
 
-  html += '</tbody>';
-  table.innerHTML = html;
+    const mgrIds = Object.keys(data).filter(id => mgrs[id])
+      .sort((a,b) => cols.reduce((s,c) => s + (data[b][c]||0) - (data[a][c]||0), 0));
+
+    mgrIds.forEach(id => {{
+      const row   = data[id];
+      const total = cols.reduce((s,c) => s + (row[c]||0), 0);
+      h += '<tr>';
+      h += '<td style="padding:6px 10px;color:#e8eaf0;white-space:nowrap">' + mgrs[id] + '</td>';
+      cols.forEach((col, ci) => {{
+        const v = row[col] || 0;
+        const intensity = colMax[ci] > 0 ? v / colMax[ci] : 0;
+        const bg = 'rgba(79,142,247,' + (0.08 + intensity * 0.72).toFixed(2) + ')';
+        const textColor = intensity > 0.5 ? '#fff' : '#e8eaf0';
+        h += '<td style="text-align:center;padding:6px 10px;background:' + bg + ';color:' + textColor + ';font-weight:' + (v > 0 ? '600' : '400') + '">' + (v || '\u2014') + '</td>';
+      }});
+      h += '<td style="text-align:center;padding:6px 10px;color:#a0aec0;font-weight:600">' + total + '</td>';
+      h += '</tr>';
+    }});
+    h += '</tbody>';
+    table.innerHTML = h;
+  }}
+
+  function renderBtns() {{
+    btnWrap.innerHTML = '';
+    weekKeys.forEach(k => {{
+      const btn = document.createElement('button');
+      btn.textContent = k;
+      btn.style.cssText = btnStyle(k === activeKey);
+      btn.onclick = function() {{
+        activeKey = k;
+        buildTable(byWeek[k]);
+        renderBtns();
+      }};
+      btnWrap.appendChild(btn);
+    }});
+  }}
+
+  buildTable(byWeek[activeKey]);
+  renderBtns();
 }})();
 
 // Closure reasons horizontal bar
@@ -1872,7 +1920,8 @@ def generate_html(report):
         "cstat_datasets":   report["cstat_datasets"],
         "cstat_by_week":    report["cstat_by_week"],
         "mgr_country_cols": report["mgr_country_cols"],
-        "mgr_country_data": report["mgr_country_data"],
+        "mgr_country_data":     report["mgr_country_data"],
+        "mgr_country_by_week":  report["mgr_country_by_week"],
         "tariff_labels":    report["tariff_labels"],
         "tariff_values":    report["tariff_values"],
         "revenue_mgr_ids":  report["revenue_mgr_ids"],
