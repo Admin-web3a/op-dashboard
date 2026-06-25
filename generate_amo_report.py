@@ -518,6 +518,23 @@ def build_report():
     reason_labels = [r for r, _ in reason_counts.most_common()]
     reason_values = [reason_counts[r] for r in reason_labels]
 
+    # Sales by tariff (Тариф field, won deals only)
+    TARIFF_FIELD_ID = 1315345
+    tariff_counts = Counter()
+    for lead in leads:
+        grp = statuses.get(lead.get("status_id"), {}).get("group", "")
+        if grp != "sale":
+            continue
+        tariff_val = None
+        for cf in (lead.get("custom_fields_values") or []):
+            if cf.get("field_id") == TARIFF_FIELD_ID:
+                vals = cf.get("values") or []
+                if vals:
+                    tariff_val = vals[0].get("value")
+        tariff_counts[tariff_val or "Не указан"] += 1
+    tariff_labels = [t for t, _ in tariff_counts.most_common()]
+    tariff_values = [tariff_counts[t] for t in tariff_labels]
+
     # Per-manager revenue (sum of prices of won deals) and sales count
     mgr_revenue     = defaultdict(int)
     mgr_sales_cnt   = defaultdict(int)
@@ -599,6 +616,8 @@ def build_report():
         "conv_pct":         conv_pct,
         "reason_labels":    reason_labels,
         "reason_values":    reason_values,
+        "tariff_labels":    tariff_labels,
+        "tariff_values":    tariff_values,
         "revenue_mgr_ids":  revenue_mgr_ids,
         "revenue_values":   revenue_values,
         "mgr_sales_count":  mgr_sales_count,
@@ -780,6 +799,9 @@ function triggerRefresh() {{
     <div class="chart-card" style="height:360px"><canvas id="mgrAvgChart"></canvas></div>
   </div>
 </div>
+
+<h2>Продажи по тарифам</h2>
+<div class="chart-card" style="height:300px"><canvas id="tariffChart"></canvas></div>
 
 <h2>Причины закрытия сделок</h2>
 <div class="chart-card" style="height:320px"><canvas id="reasonChart"></canvas></div>
@@ -1279,6 +1301,48 @@ new Chart(document.getElementById("revenueChart"),{{
   }});
 }})();
 
+// Sales by tariff — horizontal bar
+(function(){{
+  if(!DATA.tariff_labels.length) return;
+  const palette = [
+    '#4f8ef7','#6ab04c','#f5a623','#a29bfe','#fd79a8','#00cec9',
+    '#e17055','#fdcb6e','#74b9ff','#55efc4','#b2bec3','#636e72'
+  ];
+  new Chart(document.getElementById('tariffChart'), {{
+    type: 'bar',
+    data: {{
+      labels: DATA.tariff_labels,
+      datasets: [{{
+        label: 'Продаж',
+        data: DATA.tariff_values,
+        backgroundColor: DATA.tariff_labels.map((_,i) => palette[i % palette.length]),
+        borderRadius: 4,
+      }}]
+    }},
+    options: {{
+      indexAxis: 'y',
+      maintainAspectRatio: false,
+      plugins: {{
+        legend: {{display: false}},
+        tooltip: {{callbacks: {{
+          label: function(c) {{
+            const total = DATA.tariff_values.reduce((a,b)=>a+b,0);
+            return ' ' + c.raw + ' сделок (' + Math.round(c.raw/total*100) + '%)';
+          }}
+        }}}}
+      }},
+      scales: {{
+        x: {{
+          beginAtZero: true,
+          ticks: {{color: '#e8eaf0', stepSize: 1}},
+          grid: {{color: '#1e2a3a'}}
+        }},
+        y: {{ticks: {{color: '#e8eaf0', font: {{size: 12}}}}, grid: {{color: '#1e2a3a'}}}}
+      }}
+    }}
+  }});
+}})();
+
 // Closure reasons horizontal bar
 new Chart(document.getElementById("reasonChart"),{{
   type:"bar",
@@ -1366,6 +1430,8 @@ def generate_html(report):
         "conv_pct":        report["conv_pct"],
         "reason_labels":   report["reason_labels"],
         "reason_values":   report["reason_values"],
+        "tariff_labels":    report["tariff_labels"],
+        "tariff_values":    report["tariff_values"],
         "revenue_mgr_ids":  report["revenue_mgr_ids"],
         "revenue_values":   report["revenue_values"],
         "mgr_sales_count":  report["mgr_sales_count"],
