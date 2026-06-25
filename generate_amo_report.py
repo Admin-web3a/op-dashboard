@@ -585,11 +585,11 @@ def build_report():
         })
 
     # ── Manager × country heatmap ──────────────────────────────────────────────
-    # Top-5 countries (real ones, not "Другие") for column headers
+    # Top-5 countries (real ones, not rest bucket) for column headers
     TOP_MGR_COUNTRIES = 5
     mgr_country_cols = [c for c in country_labels if c != rest_lbl][:TOP_MGR_COUNTRIES]
     if rest_lbl:
-        mgr_country_cols.append("Другие")
+        mgr_country_cols.append(REST_LBL)
 
     mgr_country_raw = defaultdict(Counter)
     for lead in leads:
@@ -597,7 +597,8 @@ def build_report():
         if uid not in MANAGERS:
             continue
         country = lead_to_country.get(lead["id"], "Не определено")
-        if country in {c for c in mgr_country_cols if c != REST_LBL}:
+        known_cols = {c for c in mgr_country_cols if c != REST_LBL}
+        if country in known_cols:
             mgr_country_raw[str(uid)][country] += 1
         else:
             mgr_country_raw[str(uid)][REST_LBL] += 1
