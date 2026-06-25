@@ -5,6 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ОП Dashboard — Анкета перезаписи 06.2026</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+<script>
+// Unregister datalabels globally — we register it per-chart where needed
+if(typeof ChartDataLabels !== 'undefined') {
+  Chart.unregister(ChartDataLabels);
+}
+</script>
 <style>
   :root {
     --bg:#0f1117;--surface:#1a1d27;--border:#2a2d3a;
@@ -51,7 +58,7 @@
 <body>
 <h1>ОП Dashboard — Анкета перезаписи 06.2026</h1>
 <div style="display:flex;align-items:center;gap:16px;margin-bottom:28px">
-  <p class="meta" style="margin:0">Источник: amoCRM simmihur &nbsp;·&nbsp; Обновлено: 25.06.2026 16:53 МСК</p>
+  <p class="meta" style="margin:0">Источник: amoCRM simmihur &nbsp;·&nbsp; Обновлено: 25.06.2026 18:00 МСК</p>
   <button id="refreshBtn" onclick="triggerRefresh()" style="background:#4f8ef7;color:#fff;border:none;border-radius:6px;padding:8px 18px;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:8px">
     <span id="refreshIcon">↻</span> <span id="refreshText">Обновить данные</span>
   </button>
@@ -100,9 +107,9 @@ function triggerRefresh() {
 </style>
 
 <div class="stats">
-  <div class="stat"><div class="stat-value">1 958</div><div class="stat-label">Всего лидов</div></div>
-  <div class="stat accent"><div class="stat-value">640</div><div class="stat-label">В работе</div></div>
-  <div class="stat orange"><div class="stat-value">949</div><div class="stat-label">НДЗ</div></div>
+  <div class="stat"><div class="stat-value">1 962</div><div class="stat-label">Всего лидов</div></div>
+  <div class="stat accent"><div class="stat-value">636</div><div class="stat-label">В работе</div></div>
+  <div class="stat orange"><div class="stat-value">955</div><div class="stat-label">НДЗ</div></div>
   <div class="stat blue"><div class="stat-value">73</div><div class="stat-label">Оффер озвучен</div></div>
   <div class="stat blue"><div class="stat-value">43</div><div class="stat-label">Отложенный спрос</div></div>
   <div class="stat purple"><div class="stat-value">2</div><div class="stat-label">Выставлен счет</div></div>
@@ -175,7 +182,7 @@ function triggerRefresh() {
   </div>
   <div>
     <h2>Лиды по странам</h2>
-    <div class="chart-card" style="height:320px"><canvas id="countryChart"></canvas></div>
+    <div class="chart-card" style="height:380px"><canvas id="countryChart"></canvas></div>
   </div>
 </div>
 
@@ -206,7 +213,7 @@ function triggerRefresh() {
 </div>
 
 <script>
-const DATA = {"sorted_statuses": [{"name": "Новый лид", "count": 14, "group": "new_lead", "pipeline": "Основная воронка ОП"}, {"name": "ом назначен", "count": 49, "group": "om", "pipeline": "Основная воронка ОП"}, {"name": "Взято в работу", "count": 226, "group": "in_work", "pipeline": "Основная воронка ОП"}, {"name": "НДЗ", "count": 949, "group": "ndz", "pipeline": "Основная воронка ОП"}, {"name": "Контакт установлен", "count": 301, "group": "contact", "pipeline": "Основная воронка ОП"}, {"name": "Квалифицирован", "count": 50, "group": "qualified", "pipeline": "Основная воронка ОП"}, {"name": "Оффер озвучен", "count": 73, "group": "offer", "pipeline": "Основная воронка ОП"}, {"name": "Отложенный спрос", "count": 43, "group": "delayed", "pipeline": "Основная воронка ОП"}, {"name": "Выставлен счет", "count": 2, "group": "invoiced", "pipeline": "Основная воронка ОП"}, {"name": "Внутренняя рассрочка", "count": 2, "group": "sale", "pipeline": "Основная воронка ОП"}, {"name": "Успешно реализовано", "count": 11, "group": "sale", "pipeline": "Мини Курс"}, {"name": "Закрыто и не реализовано", "count": 237, "group": "lost", "pipeline": "Мини Курс"}], "group_counts": {"om": 49, "ndz": 949, "in_work": 226, "new_lead": 14, "contact": 301, "offer": 73, "qualified": 50, "lost": 237, "delayed": 43, "sale": 13, "excursion": 1, "invoiced": 2}, "managers": {"12377210": "Никита Саламатин", "11176694": "Наталья", "6461602": "Зверева Елена", "11181290": "Сергей", "9948090": "Денис Криницын", "11068965": "Максим Лисевский", "10293970": "Влад", "12738086": "Кирилл", "11356530": "Денис", "7728454": "Виктория Шинкарева", "6976552": "Виолетта Осадчук", "9596454": "Ковалева Любовь"}, "mgr_viz": {"10293970": {"om": 4, "ndz": 95, "contact": 55, "offer": 10, "delayed": 6, "sale": 4, "lost": 3}, "7728454": {"ndz": 40, "in_work": 31, "contact": 20, "offer": 1, "qualified": 1, "sale": 1, "lost": 2}, "9948090": {"om": 2, "in_work": 8, "ndz": 112, "contact": 37, "offer": 10, "qualified": 2, "lost": 1}, "11068965": {"ndz": 92, "om": 14, "in_work": 33, "lost": 2, "offer": 7, "contact": 4, "sale": 2}, "12377210": {"contact": 18, "ndz": 158, "lost": 50, "offer": 16, "delayed": 19, "in_work": 10, "sale": 3, "qualified": 4}, "11181290": {"offer": 7, "ndz": 95, "contact": 50, "in_work": 10, "lost": 32, "sale": 1, "qualified": 21, "delayed": 2}, "11356530": {"ndz": 24, "in_work": 24, "contact": 8, "new_lead": 2, "om": 8, "lost": 9, "sale": 1}, "11176694": {"contact": 47, "qualified": 7, "ndz": 99, "sale": 2, "in_work": 39, "offer": 6, "lost": 33, "delayed": 11, "new_lead": 1}, "12738086": {"om": 9, "ndz": 114, "offer": 3, "contact": 17, "in_work": 3, "lost": 15, "sale": 1}, "9596454": {"ndz": 58, "in_work": 31, "qualified": 2, "contact": 6, "lost": 2}, "6976552": {"ndz": 34, "om": 12, "in_work": 36, "delayed": 2, "contact": 8, "offer": 1, "lost": 3}, "6461602": {"contact": 31, "ndz": 28, "offer": 12, "qualified": 13, "in_work": 1, "lost": 8, "delayed": 3, "sale": 1}}, "overdue": {"6461602": 27, "11176694": 1, "11068965": 5, "11181290": 7, "6976552": 12, "7728454": 2, "11356530": 32}, "daily_labels": ["06.06", "07.06", "08.06", "09.06", "10.06", "11.06", "12.06", "13.06", "14.06", "15.06", "16.06", "17.06", "18.06", "19.06", "20.06", "21.06", "22.06", "23.06", "24.06", "25.06"], "daily_values": [129, 165, 133, 55, 145, 89, 60, 55, 194, 191, 134, 85, 25, 74, 40, 51, 68, 65, 108, 63], "capital_labels": ["$0-5,000", "до $5,000", "$5,000-50,000", "$50,000-100,000", "$100,000-500,000", "$500,000-1,000,000", "$1,000,000+", "Неизвестно", "Не указан"], "capital_values": [7, 653, 648, 161, 70, 9, 7, 6, 397], "daily_cap_labels": ["06.06", "07.06", "08.06", "09.06", "10.06", "11.06", "12.06", "13.06", "14.06", "15.06", "16.06", "17.06", "18.06", "19.06", "20.06", "21.06", "22.06", "23.06", "24.06", "25.06"], "daily_cap_data": {"$0-5,000": [0, 0, 1, 1, 2, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0], "до $5,000": [36, 60, 46, 20, 64, 37, 27, 22, 53, 70, 43, 21, 11, 26, 15, 10, 20, 14, 34, 15], "$5,000-50,000": [58, 69, 51, 22, 48, 32, 16, 13, 59, 68, 42, 26, 8, 25, 9, 15, 29, 19, 20, 10], "$50,000-100,000": [16, 19, 13, 5, 6, 8, 2, 3, 23, 19, 7, 3, 2, 3, 4, 3, 9, 5, 5, 2], "$100,000-500,000": [10, 5, 8, 1, 6, 4, 3, 5, 3, 7, 2, 2, 1, 1, 2, 2, 4, 2, 2, 0], "$500,000-1,000,000": [0, 0, 0, 2, 1, 0, 0, 0, 2, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0], "$1,000,000+": [1, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 1, 0, 0], "Неизвестно": [0, 0, 2, 0, 0, 1, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], "Не указан": [8, 12, 12, 3, 17, 7, 11, 12, 53, 25, 39, 32, 3, 18, 9, 21, 6, 23, 46, 36]}, "ready_labels": ["Хочу_больше_узнать_про_программу", "Не ответил на вопрос", "Супер_Я_готов"], "ready_values": [1014, 588, 356], "conv_dates": ["01.06–07.06", "08.06–14.06", "15.06–21.06", "22.06–28.06"], "conv_vzv": [102, 269, 199, 127], "conv_pct": [100, 88, 59, 13], "reason_labels": ["Уже покупал Инфинити", "Купил ранее этот курс", "Пришла другая заявка", "Дубль", "Некорректные данные", "Не актуально", "Нет бюджета", "Не дозвонились", "Удалил контакты", "Нецелевой", "Интересуют бесплатные продукты", "У самого отлично получается", "Другое (написать в примечании)", "Купил Мастер-группу", "Отложенный интерес", "Сброс после приветствия", "Уже покупал Ментор", "Перестал отвечать", "ВОЗВРАТ"], "reason_values": [68, 37, 36, 21, 21, 11, 10, 7, 5, 5, 4, 3, 2, 2, 1, 1, 1, 1, 1], "country_labels": ["Россия", "Не указан", "Украина", "Беларусь", "Другое", "Германия", "Казахстан", "США / Канада", "Латвия", "Польша", "Армения", "Грузия", "Израиль", "Литва", "Чехия", "Молдова", "Эстония", "Великобритания", "Кыргызстан", "Италия", "Франция", "Южная Корея", "Испания", "Турция", "Таиланд", "Азербайджан", "Узбекистан", "Швейцария", "Сербия", "Финляндия", "Норвегия", "Австрия", "Индонезия", "Австралия", "Туркменистан", "Вьетнам", "Нидерланды", "Кувейт", "Словения", "Аргентина", "Мексика", "Бельгия", "ОАЭ"], "country_values": [1037, 275, 129, 121, 66, 44, 32, 29, 23, 20, 17, 15, 15, 14, 11, 10, 9, 8, 8, 7, 7, 7, 7, 7, 7, 7, 5, 4, 3, 3, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1], "tariff_labels": ["PRO", "Метод AFK", "Базовый", "Bootcamp", "VIP", "Infinity"], "tariff_values": [6, 2, 2, 1, 1, 1], "revenue_mgr_ids": ["10293970", "12377210", "11068965", "11356530", "12738086", "6461602", "11176694", "7728454"], "revenue_values": [1064800, 395603, 329800, 229900, 229900, 229900, 17900, 1], "mgr_sales_count": {"12377210": 3, "11176694": 1, "6461602": 1, "11181290": 0, "9948090": 0, "11068965": 2, "10293970": 3, "12738086": 1, "11356530": 1, "7728454": 1, "6976552": 0, "9596454": 0}, "mgr_avg_price": {"12377210": 131868, "11176694": 17900, "6461602": 229900, "11181290": 0, "9948090": 0, "11068965": 164900, "10293970": 354933, "12738086": 229900, "11356530": 229900, "7728454": 1, "6976552": 0, "9596454": 0}, "mgr_conv": {"12377210": {"inwork": 278, "sales": 3, "pct": 1.1}, "11176694": {"inwork": 243, "sales": 1, "pct": 0.4}, "6461602": {"inwork": 97, "sales": 1, "pct": 1.0}, "11181290": {"inwork": 218, "sales": 0, "pct": 0.0}, "9948090": {"inwork": 170, "sales": 0, "pct": 0.0}, "11068965": {"inwork": 140, "sales": 2, "pct": 1.4}, "10293970": {"inwork": 173, "sales": 3, "pct": 1.7}, "12738086": {"inwork": 153, "sales": 1, "pct": 0.7}, "11356530": {"inwork": 66, "sales": 1, "pct": 1.5}, "7728454": {"inwork": 96, "sales": 1, "pct": 1.0}, "6976552": {"inwork": 84, "sales": 0, "pct": 0.0}, "9596454": {"inwork": 99, "sales": 0, "pct": 0.0}}, "cumulative_funnel": [{"name": "Новый лид", "count": 1957}, {"name": "Взято в работу", "count": 1894}, {"name": "Контакт установлен", "count": 439}, {"name": "Квалифицирован", "count": 138}, {"name": "Оффер озвучен", "count": 88}, {"name": "Выставлен счет", "count": 15}, {"name": "Продажи", "count": 13}], "cohort_table": {"weeks": ["01.06–07.06", "08.06–14.06", "15.06–21.06", "22.06–28.06"], "immature": ["15.06–21.06", "22.06–28.06"], "stages": ["Новый лид", "Взято в работу", "Контакт установлен", "Квалифицирован", "Оффер озвучен", "Выставлен счет", "Продажи"], "counts": {"01.06–07.06": [296, 296, 93, 39, 23, 3, 2], "08.06–14.06": [730, 730, 214, 74, 52, 9, 8], "15.06–21.06": [600, 599, 111, 23, 12, 3, 3], "22.06–28.06": [304, 242, 16, 0, 0, 0, 0]}, "totals": [1957, 1894, 439, 138, 88, 15, 13]}};
+const DATA = {"sorted_statuses": [{"name": "Новый лид", "count": 15, "group": "new_lead", "pipeline": "Основная воронка ОП"}, {"name": "ом назначен", "count": 28, "group": "om", "pipeline": "Основная воронка ОП"}, {"name": "Взято в работу", "count": 234, "group": "in_work", "pipeline": "Основная воронка ОП"}, {"name": "НДЗ", "count": 955, "group": "ndz", "pipeline": "Основная воронка ОП"}, {"name": "Контакт установлен", "count": 307, "group": "contact", "pipeline": "Основная воронка ОП"}, {"name": "Квалифицирован", "count": 52, "group": "qualified", "pipeline": "Основная воронка ОП"}, {"name": "Оффер озвучен", "count": 73, "group": "offer", "pipeline": "Основная воронка ОП"}, {"name": "Отложенный спрос", "count": 43, "group": "delayed", "pipeline": "Основная воронка ОП"}, {"name": "Выставлен счет", "count": 2, "group": "invoiced", "pipeline": "Основная воронка ОП"}, {"name": "Внутренняя рассрочка", "count": 2, "group": "sale", "pipeline": "Основная воронка ОП"}, {"name": "Успешно реализовано", "count": 11, "group": "sale", "pipeline": "Мини Курс"}, {"name": "Закрыто и не реализовано", "count": 239, "group": "lost", "pipeline": "Мини Курс"}], "group_counts": {"om": 28, "in_work": 234, "ndz": 955, "sale": 13, "contact": 307, "offer": 73, "new_lead": 15, "qualified": 52, "lost": 239, "invoiced": 2, "delayed": 43, "excursion": 1}, "managers": {"12377210": "Никита Саламатин", "11176694": "Наталья", "6461602": "Зверева Елена", "11181290": "Сергей", "9948090": "Денис Криницын", "11068965": "Максим Лисевский", "10293970": "Влад", "12738086": "Кирилл", "11356530": "Денис", "7728454": "Виктория Шинкарева", "6976552": "Виолетта Осадчук", "9596454": "Ковалева Любовь"}, "mgr_viz": {"7728454": {"om": 3, "ndz": 47, "sale": 1, "contact": 23, "qualified": 2, "offer": 1, "lost": 2, "in_work": 20}, "11356530": {"in_work": 30, "contact": 8, "ndz": 24, "new_lead": 1, "lost": 9, "sale": 1}, "12738086": {"om": 1, "contact": 20, "ndz": 111, "in_work": 13, "lost": 16, "offer": 3, "sale": 1}, "9948090": {"contact": 37, "offer": 10, "in_work": 10, "ndz": 111, "qualified": 2, "lost": 1}, "10293970": {"om": 1, "offer": 10, "contact": 56, "ndz": 98, "sale": 4, "delayed": 6, "lost": 3}, "11181290": {"ndz": 95, "contact": 49, "offer": 7, "in_work": 10, "lost": 32, "sale": 1, "qualified": 21, "delayed": 2}, "9596454": {"in_work": 32, "ndz": 57, "qualified": 3, "contact": 6, "lost": 2}, "6976552": {"in_work": 36, "ndz": 34, "om": 9, "delayed": 2, "contact": 8, "offer": 1, "lost": 3}, "11068965": {"contact": 4, "ndz": 92, "om": 14, "in_work": 33, "lost": 2, "offer": 7, "sale": 2}, "12377210": {"contact": 18, "ndz": 159, "lost": 50, "offer": 16, "delayed": 19, "in_work": 10, "sale": 3, "qualified": 4}, "11176694": {"contact": 47, "qualified": 7, "ndz": 99, "sale": 2, "in_work": 39, "offer": 6, "lost": 33, "delayed": 11, "new_lead": 1}, "6461602": {"contact": 31, "ndz": 28, "offer": 12, "qualified": 13, "in_work": 1, "lost": 8, "delayed": 3, "sale": 1}}, "overdue": {"6461602": 27, "11176694": 2, "11068965": 5, "11181290": 7, "6976552": 9, "7728454": 5, "11356530": 18, "12377210": 1}, "daily_labels": ["06.06", "07.06", "08.06", "09.06", "10.06", "11.06", "12.06", "13.06", "14.06", "15.06", "16.06", "17.06", "18.06", "19.06", "20.06", "21.06", "22.06", "23.06", "24.06", "25.06"], "daily_values": [128, 164, 133, 55, 145, 89, 60, 55, 195, 190, 134, 85, 25, 75, 40, 51, 68, 66, 108, 67], "capital_labels": ["$0-5,000", "до $5,000", "$5,000-50,000", "$50,000-100,000", "$100,000-500,000", "$500,000-1,000,000", "$1,000,000+", "Неизвестно", "Не указан"], "capital_values": [8, 653, 649, 162, 69, 9, 7, 6, 399], "daily_cap_labels": ["06.06", "07.06", "08.06", "09.06", "10.06", "11.06", "12.06", "13.06", "14.06", "15.06", "16.06", "17.06", "18.06", "19.06", "20.06", "21.06", "22.06", "23.06", "24.06", "25.06"], "daily_cap_data": {"$0-5,000": [0, 0, 1, 1, 2, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0], "до $5,000": [36, 60, 46, 20, 64, 37, 27, 22, 53, 70, 43, 21, 11, 26, 15, 10, 20, 14, 34, 15], "$5,000-50,000": [57, 69, 51, 22, 48, 32, 16, 13, 59, 68, 42, 26, 8, 25, 9, 15, 29, 19, 20, 12], "$50,000-100,000": [16, 19, 13, 5, 6, 8, 2, 3, 23, 19, 7, 3, 2, 3, 4, 3, 9, 5, 5, 3], "$100,000-500,000": [10, 5, 8, 1, 6, 4, 3, 5, 3, 6, 2, 2, 1, 1, 2, 2, 4, 2, 2, 0], "$500,000-1,000,000": [0, 0, 0, 2, 1, 0, 0, 0, 2, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0], "$1,000,000+": [1, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 1, 0, 0], "Неизвестно": [0, 0, 2, 0, 0, 1, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], "Не указан": [8, 11, 12, 3, 17, 7, 11, 12, 54, 25, 39, 32, 3, 19, 9, 21, 6, 23, 46, 37]}, "ready_labels": ["Хочу_больше_узнать_про_программу", "Супер_Я_готов", "Не ответил на вопрос"], "ready_values": [1015, 356, 591], "conv_dates": ["01.06–07.06", "08.06–14.06", "15.06–21.06", "22.06–28.06"], "conv_vzv": [101, 272, 201, 139], "conv_pct": [100, 88, 59, 15], "reason_labels": ["Уже покупал Инфинити", "Пришла другая заявка", "Купил ранее этот курс", "Дубль", "Некорректные данные", "Не актуально", "Нет бюджета", "Не дозвонились", "Удалил контакты", "Нецелевой", "Интересуют бесплатные продукты", "У самого отлично получается", "Другое (написать в примечании)", "Купил Мастер-группу", "Отложенный интерес", "Сброс после приветствия", "Уже покупал Ментор", "Перестал отвечать", "ВОЗВРАТ"], "reason_values": [69, 37, 37, 21, 21, 11, 10, 7, 5, 5, 4, 3, 2, 2, 1, 1, 1, 1, 1], "country_labels": ["Россия", "Не указан", "Украина", "Беларусь", "Другое", "Германия", "Казахстан", "США / Канада", "Латвия", "Польша", "Другие (33 стран)"], "country_values": [1037, 276, 130, 121, 66, 45, 32, 29, 23, 20, 189], "tariff_labels": ["PRO", "Метод AFK", "Базовый", "Bootcamp", "VIP", "Infinity"], "tariff_values": [6, 2, 2, 1, 1, 1], "revenue_mgr_ids": ["10293970", "12377210", "11068965", "11356530", "12738086", "6461602", "11176694", "7728454"], "revenue_values": [1064800, 395603, 329800, 229900, 229900, 229900, 17900, 1], "mgr_sales_count": {"12377210": 3, "11176694": 1, "6461602": 1, "11181290": 0, "9948090": 0, "11068965": 2, "10293970": 3, "12738086": 1, "11356530": 1, "7728454": 1, "6976552": 0, "9596454": 0}, "mgr_avg_price": {"12377210": 131868, "11176694": 17900, "6461602": 229900, "11181290": 0, "9948090": 0, "11068965": 164900, "10293970": 354933, "12738086": 229900, "11356530": 229900, "7728454": 1, "6976552": 0, "9596454": 0}, "mgr_conv": {"12377210": {"inwork": 279, "sales": 3, "pct": 1.1}, "11176694": {"inwork": 243, "sales": 1, "pct": 0.4}, "6461602": {"inwork": 97, "sales": 1, "pct": 1.0}, "11181290": {"inwork": 217, "sales": 0, "pct": 0.0}, "9948090": {"inwork": 171, "sales": 0, "pct": 0.0}, "11068965": {"inwork": 140, "sales": 2, "pct": 1.4}, "10293970": {"inwork": 177, "sales": 3, "pct": 1.7}, "12738086": {"inwork": 164, "sales": 1, "pct": 0.6}, "11356530": {"inwork": 72, "sales": 1, "pct": 1.4}, "7728454": {"inwork": 96, "sales": 1, "pct": 1.0}, "6976552": {"inwork": 84, "sales": 0, "pct": 0.0}, "9596454": {"inwork": 100, "sales": 0, "pct": 0.0}}, "cumulative_funnel": [{"name": "Новый лид", "count": 1961}, {"name": "Взято в работу", "count": 1918}, {"name": "Контакт установлен", "count": 447}, {"name": "Квалифицирован", "count": 140}, {"name": "Оффер озвучен", "count": 88}, {"name": "Выставлен счет", "count": 15}, {"name": "Продажи", "count": 13}], "cohort_table": {"weeks": ["01.06–07.06", "08.06–14.06", "15.06–21.06", "22.06–28.06"], "immature": ["22.06–28.06", "15.06–21.06"], "stages": ["Новый лид", "Взято в работу", "Контакт установлен", "Квалифицирован", "Оффер озвучен", "Выставлен счет", "Продажи"], "counts": {"01.06–07.06": [294, 294, 92, 39, 23, 3, 2], "08.06–14.06": [731, 731, 217, 74, 52, 9, 8], "15.06–21.06": [600, 600, 113, 24, 12, 3, 3], "22.06–28.06": [309, 266, 20, 1, 0, 0, 0]}, "totals": [1961, 1918, 447, 140, 88, 15, 13]}};
 const VCOLORS = {incoming:"#74b9ff",new_lead:"#0984e3",om:"#6c5ce7",in_work:"#00cec9",contact:"#ffd32a",qualified:"#ff6b81",ndz:"#f5a623",offer:"#eb4d4b",delayed:"#a29bfe",sale:"#6ab04c",lost:"#eb4d4b"};
 const VLABELS = {incoming:"Входящие",new_lead:"Новый лид",om:"ОМ назначен",in_work:"Взято в работу",contact:"Контакт установлен",qualified:"Квалифицирован",ndz:"НДЗ",offer:"Оффер озвучен",delayed:"Отложен",sale:"Продажи+"};
 const VORDER  = ["incoming","new_lead","om","in_work","contact","qualified","ndz","offer","delayed","sale"];
@@ -719,22 +726,26 @@ new Chart(document.getElementById("revenueChart"),{
   });
 })();
 
-// Country distribution — horizontal bar
+// Country distribution — horizontal bar (top-10 + others)
 (function(){
   if(!DATA.country_labels || !DATA.country_labels.length) return;
+  // Reverse so largest is at top (Chart.js renders bottom-to-top for indexAxis:'y')
+  const labels = DATA.country_labels.slice().reverse();
+  const values = DATA.country_values.slice().reverse();
+  const total  = DATA.country_values.reduce((a,b)=>a+b,0);
   const palette = [
     '#4f8ef7','#6ab04c','#f5a623','#a29bfe','#fd79a8','#00cec9',
     '#e17055','#fdcb6e','#74b9ff','#55efc4','#b2bec3','#636e72'
   ];
-  const total = DATA.country_values.reduce((a,b)=>a+b,0);
   new Chart(document.getElementById('countryChart'), {
     type: 'bar',
+    plugins: [ChartDataLabels],
     data: {
-      labels: DATA.country_labels,
+      labels: labels,
       datasets: [{
         label: 'Лидов',
-        data: DATA.country_values,
-        backgroundColor: DATA.country_labels.map((_,i) => palette[i % palette.length]),
+        data: values,
+        backgroundColor: labels.map((_,i) => palette[i % palette.length]),
         borderRadius: 4,
       }]
     },
@@ -747,11 +758,28 @@ new Chart(document.getElementById("revenueChart"),{
           label: function(c) {
             return ' ' + c.raw + ' лидов (' + Math.round(c.raw/total*100) + '%)';
           }
-        }}
+        }},
+        datalabels: {
+          anchor: 'end',
+          align: 'end',
+          color: '#e8eaf0',
+          font: {size: 11, weight: 'bold'},
+          formatter: function(val) {
+            return val + ' (' + Math.round(val/total*100) + '%)';
+          }
+        }
       },
+      layout: {padding: {right: 90}},
       scales: {
-        x: {beginAtZero: true, ticks: {color: '#e8eaf0', stepSize: 1}, grid: {color: '#1e2a3a'}},
-        y: {ticks: {color: '#e8eaf0', font: {size: 12}}, grid: {color: '#1e2a3a'}}
+        x: {
+          beginAtZero: true,
+          ticks: {color: '#e8eaf0'},
+          grid: {color: '#1e2a3a'}
+        },
+        y: {
+          ticks: {color: '#e8eaf0', font: {size: 12}},
+          grid: {color: '#1e2a3a'}
+        }
       }
     }
   });
