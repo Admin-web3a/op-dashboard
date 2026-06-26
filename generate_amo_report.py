@@ -786,6 +786,9 @@ def build_report():
     for wlbl in sorted(week_leads_map):
         mgr_country_by_week[wlbl] = _build_mgr_country_data(week_leads_map[wlbl])
 
+    mgr_country_data_prereg = _build_mgr_country_data(leads_prereg)
+    mgr_country_data_web    = _build_mgr_country_data(leads_web)
+
 
     print("Computing conversion (Взято → Контакт) by creation date…")
     _tz_msk     = datetime.timezone(datetime.timedelta(hours=3))
@@ -1016,9 +1019,11 @@ def build_report():
         "country_values_web":     country_values_web,
         "cstat_datasets":   cstat_datasets,
         "cstat_by_week":    cstat_by_week,
-        "mgr_country_cols":     mgr_country_cols,
-        "mgr_country_data":     mgr_country_data,
-        "mgr_country_by_week":  mgr_country_by_week,
+        "mgr_country_cols":         mgr_country_cols,
+        "mgr_country_data":         mgr_country_data,
+        "mgr_country_by_week":      mgr_country_by_week,
+        "mgr_country_data_prereg":  mgr_country_data_prereg,
+        "mgr_country_data_web":     mgr_country_data_web,
         "tariff_labels":    tariff_labels,
         "tariff_values":    tariff_values,
         "revenue_mgr_ids":  revenue_mgr_ids,
@@ -1100,11 +1105,15 @@ if(typeof ChartDataLabels !== 'undefined') {{
 </head>
 <body>
 <h1>ОП Dashboard — Анкета перезаписи 06.2026</h1>
-<div style="display:flex;align-items:center;gap:16px;margin-bottom:28px">
+<div style="display:flex;align-items:center;gap:16px;margin-bottom:16px">
   <p class="meta" style="margin:0">Источник: amoCRM simmihur &nbsp;·&nbsp; Обновлено: {updated_at}</p>
   <button id="refreshBtn" onclick="triggerRefresh()" style="background:#4f8ef7;color:#fff;border:none;border-radius:6px;padding:8px 18px;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:8px">
     <span id="refreshIcon">↻</span> <span id="refreshText">Обновить данные</span>
   </button>
+</div>
+<div style="display:flex;align-items:center;gap:8px;margin-bottom:28px;padding:12px 16px;background:#1a2236;border-radius:10px;border:1px solid #2a3550">
+  <span style="font-size:13px;color:#a0aec0;margin-right:4px">Источник данных:</span>
+  <div id="globalSrcToggle" style="display:flex;gap:8px"></div>
 </div>
 <script>
 function triggerRefresh() {{
@@ -1192,7 +1201,6 @@ function triggerRefresh() {{
 <div class="chart-card" style="height:320px"><canvas id="convFunnelChart"></canvas></div>
 
 <h2>Лиды по менеджерам</h2>
-<div id="mgrSourceBtns" style="display:flex;gap:8px;margin-bottom:12px"></div>
 <div class="chart-card" style="height:600px"><canvas id="mgrChart"></canvas></div>
 
 <h2>Просроченные задачи по менеджерам</h2>
@@ -1226,7 +1234,6 @@ function triggerRefresh() {{
   </div>
   <div>
     <h2>Лиды по странам</h2>
-    <div id="countrySourceBtns" style="display:flex;gap:8px;margin-bottom:12px"></div>
     <div class="chart-card" style="height:380px"><canvas id="countryChart"></canvas></div>
   </div>
 </div>
@@ -1274,6 +1281,35 @@ function triggerRefresh() {{
 
 <script>
 const DATA = {json_data};
+
+// ── Global source toggle ───────────────────────────────────────────────────
+window.SRC = "all";
+window.SRC_UPDATERS = [];
+(function(){{
+  const wrap = document.getElementById("globalSrcToggle");
+  const SRCS = {{all:"Все источники", prereg:"Предзапись", web:"Вебинар 06.26"}};
+  const btnStyle = (a) =>
+    "padding:6px 16px;border-radius:6px;border:none;cursor:pointer;font-size:13px;font-weight:600;transition:all 0.15s;" +
+    (a ? "background:#4f8ef7;color:#fff;box-shadow:0 2px 8px rgba(79,142,247,0.4);"
+       : "background:#243050;color:#a0aec0;");
+
+  function renderToggle() {{
+    wrap.innerHTML = "";
+    Object.keys(SRCS).forEach(k => {{
+      const btn = document.createElement("button");
+      btn.textContent = SRCS[k];
+      btn.style.cssText = btnStyle(k === window.SRC);
+      btn.onclick = function() {{
+        window.SRC = k;
+        window.SRC_UPDATERS.forEach(fn => fn(k));
+        renderToggle();
+      }};
+      wrap.appendChild(btn);
+    }});
+  }}
+  renderToggle();
+}})();
+
 const VCOLORS = {{incoming:"#74b9ff",new_lead:"#0984e3",om:"#6c5ce7",in_work:"#00cec9",contact:"#ffd32a",qualified:"#ff6b81",ndz:"#f5a623",offer:"#eb4d4b",delayed:"#a29bfe",sale:"#6ab04c",lost:"#eb4d4b"}};
 const VLABELS = {{incoming:"Входящие",new_lead:"Новый лид",om:"ОМ назначен",in_work:"Взято в работу",contact:"Контакт установлен",qualified:"Квалифицирован",ndz:"НДЗ",offer:"Оффер озвучен",delayed:"Отложен",sale:"Продажи+"}};
 const VORDER  = ["incoming","new_lead","om","in_work","contact","qualified","ndz","offer","delayed","sale"];
@@ -1421,21 +1457,9 @@ const mgrIds=Object.keys(DATA.mgr_viz).sort((a,b)=>{{
   const tb=Object.values(DATA.mgr_viz[b]).reduce((s,v)=>s+v,0);
   return tb-ta;
 }});
-// Mgr chart with source toggle
+// Mgr chart — responds to global source toggle
 (function(){{
-  const srcMaps = {{
-    all:    DATA.mgr_viz,
-    prereg: DATA.mgr_viz_prereg,
-    web:    DATA.mgr_viz_web,
-  }};
-  const srcLabels = {{all:"Все источники", prereg:"Предзапись", web:"Вебинар"}};
-  let activeSrc = "all";
-
-  const btnStyle = (a) =>
-    "padding:5px 12px;border-radius:5px;border:none;cursor:pointer;font-size:12px;font-weight:600;" +
-    (a ? "background:#4f8ef7;color:#fff;" : "background:#1e2a3a;color:#a0aec0;");
-
-  const btnWrap = document.getElementById("mgrSourceBtns");
+  const srcMaps = {{all: DATA.mgr_viz, prereg: DATA.mgr_viz_prereg, web: DATA.mgr_viz_web}};
   const chart = new Chart(document.getElementById("mgrChart"), {{
     type:"bar",
     data:{{
@@ -1451,27 +1475,13 @@ const mgrIds=Object.keys(DATA.mgr_viz).sort((a,b)=>{{
       y:{{...base.scales.y,stacked:true}}
     }}}}
   }});
-
-  function renderMgrBtns() {{
-    btnWrap.innerHTML = "";
-    Object.keys(srcMaps).forEach(k => {{
-      const btn = document.createElement("button");
-      btn.textContent = srcLabels[k];
-      btn.style.cssText = btnStyle(k === activeSrc);
-      btn.onclick = function() {{
-        activeSrc = k;
-        const viz = srcMaps[k];
-        chart.data.datasets.forEach((ds, i) => {{
-          const g = VORDER[i];
-          ds.data = mgrIds.map(id => (viz[id]||{{}})[g]||0);
-        }});
-        chart.update();
-        renderMgrBtns();
-      }};
-      btnWrap.appendChild(btn);
+  window.SRC_UPDATERS.push(function(src) {{
+    const viz = srcMaps[src] || srcMaps.all;
+    chart.data.datasets.forEach((ds, i) => {{
+      ds.data = mgrIds.map(id => (viz[id]||{{}})[VORDER[i]]||0);
     }});
-  }}
-  renderMgrBtns();
+    chart.update();
+  }});
 }})();
 
 // Overdue
@@ -1823,30 +1833,22 @@ new Chart(document.getElementById("revenueChart"),{{
   }});
 }})();
 
-// Country distribution — horizontal bar with source toggle
+// Country distribution — horizontal bar, responds to global source toggle
 (function(){{
   const srcData = {{
     all:    {{labels: DATA.country_labels,        values: DATA.country_values}},
     prereg: {{labels: DATA.country_labels_prereg, values: DATA.country_values_prereg}},
     web:    {{labels: DATA.country_labels_web,    values: DATA.country_values_web}},
   }};
-  const srcLabels = {{all:"Все источники", prereg:"Предзапись", web:"Вебинар"}};
-  let activeSrc = "all";
-
   const palette = [
     '#4f8ef7','#6ab04c','#f5a623','#a29bfe','#fd79a8','#00cec9',
     '#e17055','#fdcb6e','#74b9ff','#55efc4','#b2bec3','#636e72'
   ];
 
-  const btnStyle = (a) =>
-    "padding:5px 12px;border-radius:5px;border:none;cursor:pointer;font-size:12px;font-weight:600;" +
-    (a ? "background:#4f8ef7;color:#fff;" : "background:#1e2a3a;color:#a0aec0;");
-
   function buildData(src) {{
-    const lbs = (srcData[src].labels || []).slice().reverse();
-    const vls = (srcData[src].values || []).slice().reverse();
-    const tot = vls.reduce((a,b)=>a+b,0);
-    return {{lbs, vls, tot}};
+    const lbs = ((srcData[src]||srcData.all).labels || []).slice().reverse();
+    const vls = ((srcData[src]||srcData.all).values || []).slice().reverse();
+    return {{lbs, vls}};
   }}
 
   const init = buildData("all");
@@ -1890,26 +1892,13 @@ new Chart(document.getElementById("revenueChart"),{{
     }}
   }});
 
-  const btnWrap = document.getElementById("countrySourceBtns");
-  function renderCountryBtns() {{
-    btnWrap.innerHTML = "";
-    Object.keys(srcData).forEach(k => {{
-      const btn = document.createElement("button");
-      btn.textContent = srcLabels[k];
-      btn.style.cssText = btnStyle(k === activeSrc);
-      btn.onclick = function() {{
-        activeSrc = k;
-        const d = buildData(k);
-        chart.data.labels = d.lbs;
-        chart.data.datasets[0].data = d.vls;
-        chart.data.datasets[0].backgroundColor = d.lbs.map((_,i)=>palette[i%palette.length]);
-        chart.update();
-        renderCountryBtns();
-      }};
-      btnWrap.appendChild(btn);
-    }});
-  }}
-  renderCountryBtns();
+  window.SRC_UPDATERS.push(function(src) {{
+    const d = buildData(src);
+    chart.data.labels = d.lbs;
+    chart.data.datasets[0].data = d.vls;
+    chart.data.datasets[0].backgroundColor = d.lbs.map((_,i)=>palette[i%palette.length]);
+    chart.update();
+  }});
 }})();
 
 // Country status 100% stacked horizontal bar with week filter
@@ -1988,10 +1977,15 @@ new Chart(document.getElementById("revenueChart"),{{
   renderBtns();
 }})();
 
-// Manager × country heatmap table with week filter
+// Manager × country heatmap table — week filter + global source toggle
 (function(){{
   const cols    = DATA.mgr_country_cols;
   const byWeek  = DATA.mgr_country_by_week;
+  const bySrc   = {{
+    all:    DATA.mgr_country_data,
+    prereg: DATA.mgr_country_data_prereg,
+    web:    DATA.mgr_country_data_web,
+  }};
   const mgrs    = DATA.managers;
   const table   = document.getElementById('mgrCountryTable');
   const btnWrap = document.getElementById('mgrCountryWeekBtns');
@@ -1999,6 +1993,7 @@ new Chart(document.getElementById("revenueChart"),{{
 
   const weekKeys  = Object.keys(byWeek);
   let activeKey   = 'Все время';
+  let activeSrc   = 'all';
 
   const btnStyle = (active) =>
     'padding:5px 12px;border-radius:5px;border:none;cursor:pointer;font-size:12px;font-weight:600;' +
@@ -2037,6 +2032,13 @@ new Chart(document.getElementById("revenueChart"),{{
     table.innerHTML = h;
   }}
 
+  function currentData() {{
+    // If a specific week is selected, use byWeek data (ignores source toggle for now)
+    // If "Все время" selected, apply source filter
+    if(activeKey !== 'Все время') return byWeek[activeKey];
+    return bySrc[activeSrc] || bySrc.all;
+  }}
+
   function renderBtns() {{
     btnWrap.innerHTML = '';
     weekKeys.forEach(k => {{
@@ -2045,15 +2047,22 @@ new Chart(document.getElementById("revenueChart"),{{
       btn.style.cssText = btnStyle(k === activeKey);
       btn.onclick = function() {{
         activeKey = k;
-        buildTable(byWeek[k]);
+        buildTable(currentData());
         renderBtns();
       }};
       btnWrap.appendChild(btn);
     }});
   }}
 
-  buildTable(byWeek[activeKey]);
+  buildTable(currentData());
   renderBtns();
+
+  window.SRC_UPDATERS.push(function(src) {{
+    activeSrc = src;
+    activeKey = 'Все время'; // reset week when source changes
+    buildTable(currentData());
+    renderBtns();
+  }});
 }})();
 
 // Webinar funnel section
@@ -2185,8 +2194,10 @@ def generate_html(report):
         "cstat_datasets":   report["cstat_datasets"],
         "cstat_by_week":    report["cstat_by_week"],
         "mgr_country_cols": report["mgr_country_cols"],
-        "mgr_country_data":     report["mgr_country_data"],
-        "mgr_country_by_week":  report["mgr_country_by_week"],
+        "mgr_country_data":         report["mgr_country_data"],
+        "mgr_country_by_week":      report["mgr_country_by_week"],
+        "mgr_country_data_prereg":  report["mgr_country_data_prereg"],
+        "mgr_country_data_web":     report["mgr_country_data_web"],
         "tariff_labels":    report["tariff_labels"],
         "tariff_values":    report["tariff_values"],
         "revenue_mgr_ids":  report["revenue_mgr_ids"],
