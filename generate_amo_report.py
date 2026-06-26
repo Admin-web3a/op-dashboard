@@ -625,6 +625,10 @@ def build_report():
     print("Fetching overdue tasks…")
     filtered_lead_ids = {lead["id"] for lead in leads if lead.get("id")}
     overdue = fetch_overdue_tasks(filtered_lead_ids)
+    prereg_lead_ids = {l["id"] for l in leads_prereg if l.get("id")}
+    web_lead_ids    = {l["id"] for l in leads_web    if l.get("id")}
+    overdue_prereg = fetch_overdue_tasks(prereg_lead_ids) if prereg_lead_ids else {}
+    overdue_web    = fetch_overdue_tasks(web_lead_ids)    if web_lead_ids    else {}
 
     print("Fetching contacts for country distribution…")
     # Collect unique contact IDs from all leads (leads API returns _embedded.contacts)
@@ -741,6 +745,14 @@ def build_report():
     for wlbl in sorted(week_leads_map):
         cstat_by_week[wlbl] = _build_cstat_datasets(week_leads_map[wlbl])
 
+    # Per-source cstat (same week keys, filtered by source)
+    cstat_by_week_prereg = {"Все время": _build_cstat_datasets(leads_prereg)}
+    cstat_by_week_web    = {"Все время": _build_cstat_datasets(leads_web)}
+    for wlbl in sorted(week_leads_map):
+        week_sub = week_leads_map[wlbl]
+        cstat_by_week_prereg[wlbl] = _build_cstat_datasets([l for l in week_sub if l.get("_source") == "prereg"])
+        cstat_by_week_web[wlbl]    = _build_cstat_datasets([l for l in week_sub if l.get("_source") != "prereg"])
+
     # ── Manager × country heatmap ──────────────────────────────────────────────
     # Top-5 countries (real ones, not rest bucket) for column headers
     TOP_MGR_COUNTRIES = 10
@@ -795,6 +807,8 @@ def build_report():
     _start_date = datetime.date(2026, 6, 6)
     _today      = datetime.datetime.now(_tz_msk).date()
     conv_dates, conv_vzv, conv_pct = compute_conversion_by_day(leads, statuses, _tz_msk, _start_date, _today)
+    conv_dates_prereg, conv_vzv_prereg, conv_pct_prereg = compute_conversion_by_day(leads_prereg, statuses, _tz_msk, _start_date, _today)
+    conv_dates_web,    conv_vzv_web,    conv_pct_web    = compute_conversion_by_day(leads_web,    statuses, _tz_msk, _start_date, _today)
 
     # Sorted status list for funnel chart — fixed funnel order
     name_to_pos = {name: i for i, name in enumerate(FUNNEL_ORDER)}
@@ -819,7 +833,9 @@ def build_report():
     cumulative_funnel = compute_cumulative_funnel(leads, statuses)
 
     # Cohort conversion table (weekly)
-    cohort_table = compute_cohort_table(leads, statuses)
+    cohort_table        = compute_cohort_table(leads,        statuses)
+    cohort_table_prereg = compute_cohort_table(leads_prereg, statuses)
+    cohort_table_web    = compute_cohort_table(leads_web,    statuses)
 
     # Daily lead counts from June 6 onwards
     tz_msk = datetime.timezone(datetime.timedelta(hours=3))
@@ -1077,6 +1093,27 @@ def build_report():
                         if r not in INVALID_REASONS and r != TEST_REASON:
                             sub_reasons[r] += 1
 
+        # Capital & готовность (from anketa fields — mainly populated for prereg)
+        sub_capital  = Counter()
+        sub_ready    = Counter()
+        for lead in subset:
+            cap_val = None
+            rdy_val = None
+            for cf in (lead.get("custom_fields_values") or []):
+                fid  = cf.get("field_id")
+                vals = cf.get("values") or []
+                if fid == CAPITAL_FIELD_ID and vals:
+                    cap_val = vals[0].get("value", "?")
+                elif fid == READY_FIELD_ID and vals:
+                    rdy_val = vals[0].get("value", "?")
+            sub_capital[cap_val if cap_val else NO_CAPITAL] += 1
+            sub_ready[rdy_val if rdy_val else "Не ответил на вопрос"] += 1
+
+        sub_cap_lbs = [k for k in CAPITAL_ORDER if k in sub_capital]
+        for k in sub_capital:
+            if k not in sub_cap_lbs:
+                sub_cap_lbs.append(k)
+
         return {
             "total":           sub_total,
             "in_work":         sub_in_work,
@@ -1106,6 +1143,10 @@ def build_report():
             "reason_values":   [sub_reasons[r] for r, _ in sub_reasons.most_common()],
             "mgr_detail":      {str(uid): dict(sub_mgr_detail[uid]) for uid in MANAGERS},
             "mgr_viz":         {str(uid): dict(sub_mgr_detail[uid]) for uid in MANAGERS},
+            "capital_labels":  sub_cap_lbs,
+            "capital_values":  [sub_capital[k] for k in sub_cap_lbs],
+            "ready_labels":    list(sub_ready.keys()),
+            "ready_values":    [sub_ready[k] for k in sub_ready.keys()],
         }
 
     metrics_prereg = _compute_subset_metrics(leads_prereg)
@@ -1122,6 +1163,8 @@ def build_report():
         "mgr_viz_prereg":   mgr_viz_prereg_d,
         "mgr_viz_web":      mgr_viz_web_d,
         "overdue":          {str(uid): cnt for uid, cnt in overdue.items()},
+        "overdue_prereg":   {str(uid): cnt for uid, cnt in overdue_prereg.items()},
+        "overdue_web":      {str(uid): cnt for uid, cnt in overdue_web.items()},
         "daily_labels":     list(daily_counts.keys()),
         "daily_values":     list(daily_counts.values()),
         "mgr_detail":       mgr_detail,
@@ -1131,9 +1174,15 @@ def build_report():
         "daily_cap_data":   daily_cap_data,
         "ready_labels":     ready_labels,
         "ready_values":     ready_values,
-        "conv_dates":       conv_dates,
-        "conv_vzv":         conv_vzv,
-        "conv_pct":         conv_pct,
+        "conv_dates":        conv_dates,
+        "conv_vzv":          conv_vzv,
+        "conv_pct":          conv_pct,
+        "conv_dates_prereg": conv_dates_prereg,
+        "conv_vzv_prereg":   conv_vzv_prereg,
+        "conv_pct_prereg":   conv_pct_prereg,
+        "conv_dates_web":    conv_dates_web,
+        "conv_vzv_web":      conv_vzv_web,
+        "conv_pct_web":      conv_pct_web,
         "reason_labels":    reason_labels,
         "reason_values":    reason_values,
         "country_labels":         country_labels,
@@ -1143,7 +1192,9 @@ def build_report():
         "country_labels_web":     country_labels_web,
         "country_values_web":     country_values_web,
         "cstat_datasets":   cstat_datasets,
-        "cstat_by_week":    cstat_by_week,
+        "cstat_by_week":         cstat_by_week,
+        "cstat_by_week_prereg":  cstat_by_week_prereg,
+        "cstat_by_week_web":     cstat_by_week_web,
         "mgr_country_cols":         mgr_country_cols,
         "mgr_country_data":         mgr_country_data,
         "mgr_country_by_week":      mgr_country_by_week,
@@ -1158,7 +1209,9 @@ def build_report():
         "avg_price":        avg_price,
         "mgr_conv":         mgr_conv_data,
         "cumulative_funnel": cumulative_funnel,
-        "cohort_table":      cohort_table,
+        "cohort_table":         cohort_table,
+        "cohort_table_prereg":  cohort_table_prereg,
+        "cohort_table_web":     cohort_table_web,
         # Per-source full metric sets
         "metrics_prereg":   metrics_prereg,
         "metrics_web":      metrics_web,
@@ -1541,15 +1594,13 @@ const base = {{
   }});
 }})();
 
-// Cohort conversion table
+// Cohort conversion table — global toggle
 (function(){{
-  const ct = DATA.cohort_table;
-  if(!ct||!ct.weeks||!ct.weeks.length) return;
-  const immSet = new Set(ct.immature);
-  const weeks  = ct.weeks;
-  const stages = ct.stages;
-  const counts = ct.counts;
-  const totals = ct.totals;
+  const srcCohort = {{
+    all:    DATA.cohort_table,
+    prereg: DATA.cohort_table_prereg,
+    web:    DATA.cohort_table_web,
+  }};
 
   function convColor(pct){{
     if(pct>=70) return '#6ab04c';
@@ -1570,39 +1621,47 @@ const base = {{
       + '</div></td>';
   }}
 
-  // Header
-  let html = '<thead><tr><th style="min-width:180px">Этап / Конверсия</th>';
-  weeks.forEach(function(w){{
-    const imm = immSet.has(w);
-    html += '<th style="text-align:center;' + (imm?'opacity:0.6':'') + '">' + w + (imm?' *':'') + '</th>';
-  }});
-  html += '<th style="text-align:center;background:#1a2e0a">Итого</th></tr></thead><tbody>';
+  function renderCohort(ct) {{
+    if(!ct||!ct.weeks||!ct.weeks.length) return;
+    const immSet = new Set(ct.immature);
+    const weeks  = ct.weeks;
+    const stages = ct.stages;
+    const counts = ct.counts;
+    const totals = ct.totals;
 
-  stages.forEach(function(stage, si){{
-    // Count row
-    html += '<tr style="border-top:2px solid #2a2d3a"><td style="font-weight:600;color:#e8eaf0;font-size:13px">' + stage + '</td>';
+    let html = '<thead><tr><th style="min-width:180px">Этап / Конверсия</th>';
     weeks.forEach(function(w){{
-      const cnt = ((counts[w]||[])[si])||0;
       const imm = immSet.has(w);
-      html += '<td class="num" style="' + (imm?'opacity:0.6':'') + '">' + fmt(cnt) + '</td>';
+      html += '<th style="text-align:center;' + (imm?'opacity:0.6':'') + '">' + w + (imm?' *':'') + '</th>';
     }});
-    html += '<td class="num" style="font-weight:700;background:#1a1f0a">' + fmt(totals[si]) + '</td></tr>';
+    html += '<th style="text-align:center;background:#1a2e0a">Итого</th></tr></thead><tbody>';
 
-    // Conversion row (skip first stage — no previous stage)
-    if(si > 0){{
-      html += '<tr><td style="font-size:11px;color:#8b8fa8;padding-left:18px">&#8627; к предыдущему</td>';
+    stages.forEach(function(stage, si){{
+      html += '<tr style="border-top:2px solid #2a2d3a"><td style="font-weight:600;color:#e8eaf0;font-size:13px">' + stage + '</td>';
       weeks.forEach(function(w){{
-        const cnt  = ((counts[w]||[])[si])||0;
-        const prev = ((counts[w]||[])[si-1])||0;
-        html += barCell(cnt, prev, immSet.has(w), '');
+        const cnt = ((counts[w]||[])[si])||0;
+        const imm = immSet.has(w);
+        html += '<td class="num" style="' + (imm?'opacity:0.6':'') + '">' + fmt(cnt) + '</td>';
       }});
-      html += barCell(totals[si], totals[si-1], false, 'background:#1a1f0a;');
-      html += '</tr>';
-    }}
-  }});
+      html += '<td class="num" style="font-weight:700;background:#1a1f0a">' + fmt(totals[si]) + '</td></tr>';
+      if(si > 0){{
+        html += '<tr><td style="font-size:11px;color:#8b8fa8;padding-left:18px">&#8627; к предыдущему</td>';
+        weeks.forEach(function(w){{
+          html += barCell(((counts[w]||[])[si])||0, ((counts[w]||[])[si-1])||0, immSet.has(w), '');
+        }});
+        html += barCell(totals[si], totals[si-1], false, 'background:#1a1f0a;');
+        html += '</tr>';
+      }}
+    }});
 
-  html += '</tbody>';
-  document.getElementById('cohortTable').innerHTML = html;
+    html += '</tbody>';
+    document.getElementById('cohortTable').innerHTML = html;
+  }}
+
+  renderCohort(DATA.cohort_table);
+  window.SRC_UPDATERS.push(function(src) {{
+    renderCohort(srcCohort[src] || srcCohort.all);
+  }});
 }})();
 
 // Managers stacked
@@ -1638,16 +1697,33 @@ const mgrIds=Object.keys(DATA.mgr_viz).sort((a,b)=>{{
   }});
 }})();
 
-// Overdue
-const ovIds=Object.keys(DATA.overdue).filter(id=>DATA.managers[id]).sort((a,b)=>DATA.overdue[b]-DATA.overdue[a]);
-new Chart(document.getElementById("overdueChart"),{{
-  type:"bar",
-  data:{{
-    labels:ovIds.map(id=>DATA.managers[id]||id),
-    datasets:[{{label:"Просрочено",data:ovIds.map(id=>DATA.overdue[id]),backgroundColor:"#eb4d4b",borderRadius:3}}]
-  }},
-  options:{{...base,maintainAspectRatio:false,plugins:{{...base.plugins,legend:{{display:false}}}}}}
-}});
+// Overdue — global toggle
+(function(){{
+  const srcOv = {{
+    all:    DATA.overdue,
+    prereg: DATA.overdue_prereg,
+    web:    DATA.overdue_web,
+  }};
+  function sortedIds(ov) {{
+    return Object.keys(ov).filter(id=>DATA.managers[id]).sort((a,b)=>(ov[b]||0)-(ov[a]||0));
+  }}
+  const ovIds = sortedIds(DATA.overdue);
+  const ovChart = new Chart(document.getElementById("overdueChart"),{{
+    type:"bar",
+    data:{{
+      labels:ovIds.map(id=>DATA.managers[id]||id),
+      datasets:[{{label:"Просрочено",data:ovIds.map(id=>DATA.overdue[id]),backgroundColor:"#eb4d4b",borderRadius:3}}]
+    }},
+    options:{{...base,maintainAspectRatio:false,plugins:{{...base.plugins,legend:{{display:false}}}}}}
+  }});
+  window.SRC_UPDATERS.push(function(src) {{
+    const ov = srcOv[src] || srcOv.all;
+    const ids = sortedIds(ov);
+    ovChart.data.labels = ids.map(id=>DATA.managers[id]||id);
+    ovChart.data.datasets[0].data = ids.map(id=>ov[id]||0);
+    ovChart.update();
+  }});
+}})();
 
 // Daily capital grouped bar (% of day total)
 const capColors = {{"$0-5,000":"#eb4d4b","до $5,000":"#f5a623","$5,000-50,000":"#ffd32a","$50,000-100,000":"#6ab04c","$100,000-500,000":"#00cec9","$500,000-1,000,000":"#4f8ef7","$1,000,000+":"#a29bfe","Неизвестно":"#636e72","Не указан":"#3d4045"}};
@@ -1682,123 +1758,132 @@ new Chart(document.getElementById("dailyCapChart"),{{
   }}
 }});
 
-// Conversion funnel chart: bar (взято в работу) + line (% конверсии)
-new Chart(document.getElementById("convFunnelChart"),{{
-  data:{{
-    labels:DATA.conv_dates,
-    datasets:[
-      {{
-        type:"bar",
-        label:"Взято в работу",
-        data:DATA.conv_vzv,
-        backgroundColor:"#00cec9",
-        borderRadius:3,
-        yAxisID:"yCount",
-        order:2,
-      }},
-      {{
-        type:"line",
-        label:"% в Контакт установлен",
-        data:DATA.conv_pct,
-        borderColor:"#ffd32a",
-        backgroundColor:"transparent",
-        pointBackgroundColor:"#ffd32a",
-        pointRadius:4,
-        tension:0.3,
-        yAxisID:"yPct",
-        order:1,
-        datalabels:{{display:true}},
-      }}
-    ]
-  }},
-  options:{{
-    maintainAspectRatio:false,
-    interaction:{{mode:"index",intersect:false}},
-    plugins:{{
-      legend:{{labels:{{color:"#e8eaf0"}}}},
-      tooltip:{{callbacks:{{
-        label:function(c){{
+// Conversion funnel chart: bar (взято в работу) + line (% конверсии) — global toggle
+(function(){{
+  const srcConv = {{
+    all:    {{dates: DATA.conv_dates,        vzv: DATA.conv_vzv,        pct: DATA.conv_pct}},
+    prereg: {{dates: DATA.conv_dates_prereg, vzv: DATA.conv_vzv_prereg, pct: DATA.conv_pct_prereg}},
+    web:    {{dates: DATA.conv_dates_web,    vzv: DATA.conv_vzv_web,    pct: DATA.conv_pct_web}},
+  }};
+  const convFunnelChart = new Chart(document.getElementById("convFunnelChart"),{{
+    data:{{
+      labels:DATA.conv_dates,
+      datasets:[
+        {{type:"bar",label:"Взято в работу",data:DATA.conv_vzv,
+          backgroundColor:"#00cec9",borderRadius:3,yAxisID:"yCount",order:2}},
+        {{type:"line",label:"% в Контакт установлен",data:DATA.conv_pct,
+          borderColor:"#ffd32a",backgroundColor:"transparent",
+          pointBackgroundColor:"#ffd32a",pointRadius:4,tension:0.3,
+          yAxisID:"yPct",order:1,datalabels:{{display:true}}}}
+      ]
+    }},
+    options:{{
+      maintainAspectRatio:false,
+      interaction:{{mode:"index",intersect:false}},
+      plugins:{{
+        legend:{{labels:{{color:"#e8eaf0"}}}},
+        tooltip:{{callbacks:{{label:function(c){{
           return c.dataset.yAxisID==="yPct"
             ? ` ${{c.dataset.label}}: ${{c.raw}}%`
             : ` ${{c.dataset.label}}: ${{c.raw}}`;
-        }}
-      }}}}
-    }},
-    scales:{{
-      x:{{ticks:{{color:"#e8eaf0",maxRotation:20,font:{{size:11}}}},grid:{{color:"#1e2a3a"}}}},
-      yCount:{{
-        position:"left",
-        beginAtZero:true,
-        ticks:{{color:"#e8eaf0"}},
-        grid:{{color:"#1e2a3a"}},
-        title:{{display:true,text:"Взято в работу",color:"#00cec9"}},
+        }}}}}}
       }},
-      yPct:{{
-        position:"right",
-        min:0,max:100,
-        ticks:{{color:"#ffd32a",callback:v=>v+"%"}},
-        grid:{{drawOnChartArea:false}},
-        title:{{display:true,text:"Конверсия %",color:"#ffd32a"}},
+      scales:{{
+        x:{{ticks:{{color:"#e8eaf0",maxRotation:20,font:{{size:11}}}},grid:{{color:"#1e2a3a"}}}},
+        yCount:{{position:"left",beginAtZero:true,ticks:{{color:"#e8eaf0"}},grid:{{color:"#1e2a3a"}},
+          title:{{display:true,text:"Взято в работу",color:"#00cec9"}}}},
+        yPct:{{position:"right",min:0,max:100,ticks:{{color:"#ffd32a",callback:v=>v+"%"}},
+          grid:{{drawOnChartArea:false}},title:{{display:true,text:"Конверсия %",color:"#ffd32a"}}}}
       }}
     }}
-  }}
-}});
+  }});
+  window.SRC_UPDATERS.push(function(src) {{
+    const d = srcConv[src] || srcConv.all;
+    convFunnelChart.data.labels = d.dates;
+    convFunnelChart.data.datasets[0].data = d.vzv;
+    convFunnelChart.data.datasets[1].data = d.pct;
+    convFunnelChart.update();
+  }});
+}})();
 
 // Capital doughnut
-new Chart(document.getElementById("capitalChart"),{{
-  type:"doughnut",
-  data:{{
-    labels:DATA.capital_labels,
-    datasets:[{{
-      data:DATA.capital_values,
-      backgroundColor:["#eb4d4b","#f5a623","#ffd32a","#6ab04c","#00cec9","#4f8ef7","#a29bfe","#636e72","#3d4045"],
-      borderWidth:0,
-    }}]
-  }},
-  options:{{
-    maintainAspectRatio:false,
-    plugins:{{
-      legend:{{position:"right",labels:{{color:"#e8eaf0",font:{{size:12}},boxWidth:14,padding:10}}}},
-      tooltip:{{callbacks:{{label:function(c){{
-        const total=c.dataset.data.reduce((a,b)=>a+b,0);
-        return ` ${{c.label}}: ${{c.raw}} (${{Math.round(c.raw/total*100)}}%)`;
-      }}}}}}
+// Capital doughnut — global toggle
+(function(){{
+  const srcCap = {{
+    all:    {{labels: DATA.capital_labels,               values: DATA.capital_values}},
+    prereg: {{labels: DATA.metrics_prereg.capital_labels, values: DATA.metrics_prereg.capital_values}},
+    web:    {{labels: DATA.metrics_web.capital_labels,    values: DATA.metrics_web.capital_values}},
+  }};
+  const capBg = ["#eb4d4b","#f5a623","#ffd32a","#6ab04c","#00cec9","#4f8ef7","#a29bfe","#636e72","#3d4045"];
+  const capChart = new Chart(document.getElementById("capitalChart"),{{
+    type:"doughnut",
+    data:{{
+      labels:DATA.capital_labels,
+      datasets:[{{data:DATA.capital_values,backgroundColor:capBg,borderWidth:0}}]
+    }},
+    options:{{
+      maintainAspectRatio:false,
+      plugins:{{
+        legend:{{position:"right",labels:{{color:"#e8eaf0",font:{{size:12}},boxWidth:14,padding:10}}}},
+        tooltip:{{callbacks:{{label:function(c){{
+          const total=c.dataset.data.reduce((a,b)=>a+b,0);
+          return ` ${{c.label}}: ${{c.raw}} (${{Math.round(c.raw/total*100)}}%)`;
+        }}}}}}
+      }}
     }}
-  }}
-}});
+  }});
+  window.SRC_UPDATERS.push(function(src) {{
+    const d = srcCap[src] || srcCap.all;
+    capChart.data.labels = d.labels || [];
+    capChart.data.datasets[0].data = d.values || [];
+    capChart.update();
+  }});
+}})();
 
-// Ready doughnut
-new Chart(document.getElementById("readyChart"),{{
-  type:"doughnut",
-  data:{{
-    labels:DATA.ready_labels.map(function(l){{
-      if(l==="Супер_Я_готов") return "Готов сейчас";
-      if(l==="Хочу_больше_узнать_про_программу") return "Хочу узнать больше";
-      if(l==="Не ответил на вопрос") return "Не ответил на вопрос";
-      return l;
-    }}),
-    datasets:[{{
-      data:DATA.ready_values,
-      backgroundColor:DATA.ready_labels.map(function(l){{
-        if(l==="Супер_Я_готов") return "#6ab04c";
-        if(l==="Хочу_больше_узнать_про_программу") return "#4f8ef7";
-        if(l==="Не ответил на вопрос") return "#3d4045";
-        return "#f5a623";
-      }}),
-      borderWidth:0,
-    }}]
-  }},
-  options:{{
-    maintainAspectRatio:false,
-    plugins:{{
-      legend:{{position:"right",labels:{{color:"#e8eaf0",font:{{size:12}},boxWidth:14,padding:10}}}},
-      tooltip:{{callbacks:{{label:function(c){{
-        const total=c.dataset.data.reduce((a,b)=>a+b,0);
-        return ` ${{c.label}}: ${{c.raw}} (${{Math.round(c.raw/total*100)}}%)`;
-      }}}}}}
-    }}
+// Ready doughnut — global toggle
+(function(){{
+  const srcReady = {{
+    all:    {{labels: DATA.ready_labels,               values: DATA.ready_values}},
+    prereg: {{labels: DATA.metrics_prereg.ready_labels, values: DATA.metrics_prereg.ready_values}},
+    web:    {{labels: DATA.metrics_web.ready_labels,    values: DATA.metrics_web.ready_values}},
+  }};
+  function readyLabel(l){{
+    if(l==="Супер_Я_готов") return "Готов сейчас";
+    if(l==="Хочу_больше_узнать_про_программу") return "Хочу узнать больше";
+    if(l==="Не ответил на вопрос") return "Не ответил на вопрос";
+    return l;
   }}
-}});
+  function readyColor(l){{
+    if(l==="Супер_Я_готов") return "#6ab04c";
+    if(l==="Хочу_больше_узнать_про_программу") return "#4f8ef7";
+    if(l==="Не ответил на вопрос") return "#3d4045";
+    return "#f5a623";
+  }}
+  const readyChart = new Chart(document.getElementById("readyChart"),{{
+    type:"doughnut",
+    data:{{
+      labels:DATA.ready_labels.map(readyLabel),
+      datasets:[{{data:DATA.ready_values,backgroundColor:DATA.ready_labels.map(readyColor),borderWidth:0}}]
+    }},
+    options:{{
+      maintainAspectRatio:false,
+      plugins:{{
+        legend:{{position:"right",labels:{{color:"#e8eaf0",font:{{size:12}},boxWidth:14,padding:10}}}},
+        tooltip:{{callbacks:{{label:function(c){{
+          const total=c.dataset.data.reduce((a,b)=>a+b,0);
+          return ` ${{c.label}}: ${{c.raw}} (${{Math.round(c.raw/total*100)}}%)`;
+        }}}}}}
+      }}
+    }}
+  }});
+  window.SRC_UPDATERS.push(function(src) {{
+    const d = srcReady[src] || srcReady.all;
+    readyChart.data.labels = (d.labels||[]).map(readyLabel);
+    readyChart.data.datasets[0].data = d.values || [];
+    readyChart.data.datasets[0].backgroundColor = (d.labels||[]).map(readyColor);
+    readyChart.update();
+  }});
+}})();
 
 // Revenue by manager
 // ── Revenue / Sales count / Conversion / Avg ticket per manager ── global toggle
@@ -2059,13 +2144,18 @@ new Chart(document.getElementById("readyChart"),{{
   }});
 }})();
 
-// Country status 100% stacked horizontal bar with week filter
+// Country status 100% stacked horizontal bar with week filter + global source toggle
 (function(){{
-  const byWeek  = DATA.cstat_by_week;
+  const srcByWeek = {{
+    all:    DATA.cstat_by_week,
+    prereg: DATA.cstat_by_week_prereg,
+    web:    DATA.cstat_by_week_web,
+  }};
+  let activeByWeek = DATA.cstat_by_week;
   const countries = DATA.country_labels;
-  if(!byWeek || !countries.length) return;
+  if(!activeByWeek || !countries.length) return;
 
-  const weekKeys = Object.keys(byWeek);
+  let weekKeys = Object.keys(activeByWeek);
   const rev = countries.slice().reverse();
 
   function buildDatasets(ds) {{
@@ -2084,7 +2174,7 @@ new Chart(document.getElementById("readyChart"),{{
 
   const chart = new Chart(document.getElementById('countryStatusChart'), {{
     type: 'bar',
-    data: {{ labels: rev, datasets: buildDatasets(byWeek['Все время']) }},
+    data: {{ labels: rev, datasets: buildDatasets(activeByWeek['Все время']) }},
     options: {{
       indexAxis: 'y',
       maintainAspectRatio: false,
@@ -2113,6 +2203,16 @@ new Chart(document.getElementById("readyChart"),{{
     'padding:5px 12px;border-radius:5px;border:none;cursor:pointer;font-size:12px;font-weight:600;' +
     (active ? 'background:#4f8ef7;color:#fff;' : 'background:#1e2a3a;color:#a0aec0;');
 
+  function applyWeek(key) {{
+    const ds = activeByWeek[key] || activeByWeek['Все время'] || [];
+    const newDs = buildDatasets(ds);
+    chart.data.datasets.forEach((d, i) => {{
+      d.data = newDs[i].data;
+      d.raw  = newDs[i].raw;
+    }});
+    chart.update();
+  }}
+
   function renderBtns() {{
     btnWrap.innerHTML = '';
     weekKeys.forEach(k => {{
@@ -2121,18 +2221,21 @@ new Chart(document.getElementById("readyChart"),{{
       btn.style.cssText = btnStyle(k === activeKey);
       btn.onclick = function() {{
         activeKey = k;
-        const newDs = buildDatasets(byWeek[k]);
-        chart.data.datasets.forEach((ds, i) => {{
-          ds.data = newDs[i].data;
-          ds.raw  = newDs[i].raw;
-        }});
-        chart.update();
+        applyWeek(activeKey);
         renderBtns();
       }};
       btnWrap.appendChild(btn);
     }});
   }}
   renderBtns();
+
+  window.SRC_UPDATERS.push(function(src) {{
+    activeByWeek = srcByWeek[src] || srcByWeek.all;
+    weekKeys = Object.keys(activeByWeek);
+    activeKey = 'Все время';
+    applyWeek(activeKey);
+    renderBtns();
+  }});
 }})();
 
 // Manager × country heatmap table — week filter + global source toggle
@@ -2398,6 +2501,8 @@ def generate_html(report):
         "mgr_viz_prereg":   report["mgr_viz_prereg"],
         "mgr_viz_web":      report["mgr_viz_web"],
         "overdue":          report["overdue"],
+        "overdue_prereg":   report["overdue_prereg"],
+        "overdue_web":      report["overdue_web"],
         "daily_labels":    report["daily_labels"],
         "daily_values":    report["daily_values"],
         "capital_labels":  report["capital_labels"],
@@ -2406,9 +2511,15 @@ def generate_html(report):
         "daily_cap_data":   report["daily_cap_data"],
         "ready_labels":    report["ready_labels"],
         "ready_values":    report["ready_values"],
-        "conv_dates":      report["conv_dates"],
-        "conv_vzv":        report["conv_vzv"],
-        "conv_pct":        report["conv_pct"],
+        "conv_dates":        report["conv_dates"],
+        "conv_dates_prereg": report["conv_dates_prereg"],
+        "conv_dates_web":    report["conv_dates_web"],
+        "conv_vzv":          report["conv_vzv"],
+        "conv_pct":          report["conv_pct"],
+        "conv_vzv_prereg":   report["conv_vzv_prereg"],
+        "conv_pct_prereg":   report["conv_pct_prereg"],
+        "conv_vzv_web":      report["conv_vzv_web"],
+        "conv_pct_web":      report["conv_pct_web"],
         "reason_labels":   report["reason_labels"],
         "reason_values":   report["reason_values"],
         "country_labels":         report["country_labels"],
@@ -2418,7 +2529,9 @@ def generate_html(report):
         "country_labels_web":     report["country_labels_web"],
         "country_values_web":     report["country_values_web"],
         "cstat_datasets":   report["cstat_datasets"],
-        "cstat_by_week":    report["cstat_by_week"],
+        "cstat_by_week":         report["cstat_by_week"],
+        "cstat_by_week_prereg":  report["cstat_by_week_prereg"],
+        "cstat_by_week_web":     report["cstat_by_week_web"],
         "mgr_country_cols": report["mgr_country_cols"],
         "mgr_country_data":         report["mgr_country_data"],
         "mgr_country_by_week":      report["mgr_country_by_week"],
@@ -2434,7 +2547,9 @@ def generate_html(report):
         "mgr_avg_price":    report["mgr_avg_price"],
         "mgr_conv":         report["mgr_conv"],
         "cumulative_funnel":  report["cumulative_funnel"],
-        "cohort_table":       report["cohort_table"],
+        "cohort_table":         report["cohort_table"],
+        "cohort_table_prereg":  report["cohort_table_prereg"],
+        "cohort_table_web":     report["cohort_table_web"],
         "prereg_total":       report["prereg_total"],
         "prereg_converted":   report["prereg_converted"],
         "prereg_disqualified": report["prereg_disqualified"],
