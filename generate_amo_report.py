@@ -986,6 +986,131 @@ def build_report():
     for uid, cnts in mgr_viz.items():
         mgr_detail[str(uid)] = dict(cnts)
 
+    # ── Per-source metric helper ───────────────────────────────────────────────
+    def _compute_subset_metrics(subset):
+        """Return all chart-facing metrics for an arbitrary lead subset."""
+        sub_total       = len(subset)
+        sub_group       = Counter()
+        for lead in subset:
+            grp = statuses.get(lead.get("status_id"), {}).get("group", "active")
+            sub_group[grp] += 1
+
+        # Stat-card status counts (mirrors main stat cards)
+        sub_in_work  = sub_group.get("in_work", 0) + sub_group.get("contact", 0) + sub_group.get("qualified", 0)
+        sub_ndz      = sub_group.get("ndz", 0)
+        sub_offer    = sub_group.get("offer", 0)
+        sub_delayed  = sub_group.get("delayed", 0)
+        sub_invoiced = sub_group.get("invoiced", 0)
+        sub_sale_cnt = sub_group.get("sale", 0)
+        sub_revenue  = sum(l.get("price") or 0 for l in subset)
+        sub_avg      = round(sub_revenue / sub_sale_cnt) if sub_sale_cnt else 0
+        sub_conv_pct = round(sub_sale_cnt / sub_total * 100, 2) if sub_total else 0
+
+        # Daily lead intake
+        sub_daily = {}
+        d = start_date
+        while d <= today:
+            sub_daily[d.strftime("%d.%m")] = 0
+            d += datetime.timedelta(days=1)
+        for lead in subset:
+            ts = lead.get("created_at")
+            if ts:
+                ld = datetime.datetime.fromtimestamp(ts, tz=tz_msk).date()
+                key = ld.strftime("%d.%m")
+                if key in sub_daily:
+                    sub_daily[key] += 1
+
+        # Cumulative funnel
+        sub_funnel = compute_cumulative_funnel(subset, statuses)
+
+        # Per-manager revenue, sales count, avg, conv, viz
+        sub_mgr_rev     = defaultdict(int)
+        sub_mgr_sales   = defaultdict(int)
+        sub_mgr_inwork  = defaultdict(int)
+        sub_mgr_detail  = defaultdict(Counter)
+        for lead in subset:
+            uid = lead.get("responsible_user_id")
+            if uid not in MANAGERS:
+                continue
+            grp = statuses.get(lead.get("status_id"), {}).get("group", "")
+            vg  = VIZ_GROUP.get(grp, "active")
+            sub_mgr_detail[uid][vg] += 1
+            if grp == "sale":
+                sub_mgr_rev[uid]   += lead.get("price") or 0
+                sub_mgr_sales[uid] += 1
+            if grp in INWORK_GROUPS:
+                sub_mgr_inwork[uid] += 1
+
+        sorted_rev = sorted(sub_mgr_rev.items(), key=lambda x: x[1], reverse=True)
+        sub_conv = {}
+        for uid in MANAGERS:
+            inw  = sub_mgr_inwork.get(uid, 0)
+            sal  = sub_mgr_sales.get(uid, 0)
+            sub_conv[str(uid)] = {
+                "inwork": inw, "sales": sal,
+                "pct": round(sal / inw * 100, 1) if inw else 0,
+            }
+
+        # Tariff breakdown
+        sub_tariff = Counter()
+        for lead in subset:
+            if statuses.get(lead.get("status_id"), {}).get("group", "") != "sale":
+                continue
+            tv = None
+            for cf in (lead.get("custom_fields_values") or []):
+                if cf.get("field_id") == TARIFF_FIELD_ID:
+                    vals = cf.get("values") or []
+                    if vals:
+                        tv = vals[0].get("value")
+            sub_tariff[tv or "Не указан"] += 1
+
+        # Closure reasons
+        sub_reasons = Counter()
+        for lead in subset:
+            if statuses.get(lead.get("status_id"), {}).get("group", "") != "lost":
+                continue
+            for cf in (lead.get("custom_fields_values") or []):
+                if cf.get("field_id") == REASON_FIELD_ID:
+                    vals = cf.get("values") or []
+                    if vals:
+                        r = vals[0].get("value", "?")
+                        if r not in INVALID_REASONS and r != TEST_REASON:
+                            sub_reasons[r] += 1
+
+        return {
+            "total":           sub_total,
+            "in_work":         sub_in_work,
+            "ndz":             sub_ndz,
+            "offer":           sub_offer,
+            "delayed":         sub_delayed,
+            "invoiced":        sub_invoiced,
+            "sale_cnt":        sub_sale_cnt,
+            "revenue":         sub_revenue,
+            "avg_price":       sub_avg,
+            "conv_pct":        sub_conv_pct,
+            "daily_labels":    list(sub_daily.keys()),
+            "daily_values":    list(sub_daily.values()),
+            "cumulative_funnel": sub_funnel,
+            "revenue_mgr_ids": [str(uid) for uid, _ in sorted_rev],
+            "revenue_values":  [rev for _, rev in sorted_rev],
+            "mgr_sales_count": {str(uid): sub_mgr_sales.get(uid, 0) for uid in MANAGERS},
+            "mgr_avg_price":   {
+                str(uid): round(sub_mgr_rev[uid] / sub_mgr_sales[uid])
+                          if sub_mgr_sales.get(uid) else 0
+                for uid in MANAGERS
+            },
+            "mgr_conv":        sub_conv,
+            "tariff_labels":   [t for t, _ in sub_tariff.most_common()],
+            "tariff_values":   [sub_tariff[t] for t, _ in sub_tariff.most_common()],
+            "reason_labels":   [r for r, _ in sub_reasons.most_common()],
+            "reason_values":   [sub_reasons[r] for r, _ in sub_reasons.most_common()],
+            "mgr_detail":      {str(uid): dict(sub_mgr_detail[uid]) for uid in MANAGERS},
+            "mgr_viz":         {str(uid): dict(sub_mgr_detail[uid]) for uid in MANAGERS},
+        }
+
+    metrics_prereg = _compute_subset_metrics(leads_prereg)
+    metrics_web    = _compute_subset_metrics(leads_web)
+
     return {
         "updated_at":       datetime.datetime.now(tz_msk).strftime("%d.%m.%Y %H:%M МСК"),
         "total":            total,
@@ -1034,6 +1159,9 @@ def build_report():
         "mgr_conv":         mgr_conv_data,
         "cumulative_funnel": cumulative_funnel,
         "cohort_table":      cohort_table,
+        # Per-source full metric sets
+        "metrics_prereg":   metrics_prereg,
+        "metrics_web":      metrics_web,
         # Webinar funnel
         "prereg_total":       len(leads_prereg),
         "prereg_converted":   prereg_converted,
@@ -1158,17 +1286,17 @@ function triggerRefresh() {{
 @keyframes spin {{ from {{transform:rotate(0deg)}} to {{transform:rotate(360deg)}} }}
 </style>
 
-<div class="stats">
-  <div class="stat"><div class="stat-value">{total}</div><div class="stat-label">Всего лидов</div></div>
-  <div class="stat accent"><div class="stat-value">{active}</div><div class="stat-label">В работе</div></div>
-  <div class="stat orange"><div class="stat-value">{ndz}</div><div class="stat-label">НДЗ</div></div>
-  <div class="stat blue"><div class="stat-value">{offer_ozv}</div><div class="stat-label">Оффер озвучен</div></div>
-  <div class="stat blue"><div class="stat-value">{delayed}</div><div class="stat-label">Отложенный спрос</div></div>
-  <div class="stat purple"><div class="stat-value">{invoiced}</div><div class="stat-label">Выставлен счет</div></div>
-  <div class="stat green"><div class="stat-value">{sales}</div><div class="stat-label">Продажи</div></div>
-  <div class="stat"><div class="stat-value">{conv_pct}%</div><div class="stat-label">Конверсия в продажу</div></div>
-  <div class="stat" style="min-width:180px"><div class="stat-value" style="font-size:20px">{price}</div><div class="stat-label">Сумма сделок, ₽</div></div>
-  <div class="stat" style="min-width:180px"><div class="stat-value" style="font-size:20px">{avg_price}</div><div class="stat-label">Средний чек, ₽</div></div>
+<div class="stats" id="statCards">
+  <div class="stat"><div class="stat-value" id="sv_total">{total}</div><div class="stat-label">Всего лидов</div></div>
+  <div class="stat accent"><div class="stat-value" id="sv_inwork">{active}</div><div class="stat-label">В работе</div></div>
+  <div class="stat orange"><div class="stat-value" id="sv_ndz">{ndz}</div><div class="stat-label">НДЗ</div></div>
+  <div class="stat blue"><div class="stat-value" id="sv_offer">{offer_ozv}</div><div class="stat-label">Оффер озвучен</div></div>
+  <div class="stat blue"><div class="stat-value" id="sv_delayed">{delayed}</div><div class="stat-label">Отложенный спрос</div></div>
+  <div class="stat purple"><div class="stat-value" id="sv_invoiced">{invoiced}</div><div class="stat-label">Выставлен счет</div></div>
+  <div class="stat green"><div class="stat-value" id="sv_sale">{sales}</div><div class="stat-label">Продажи</div></div>
+  <div class="stat"><div class="stat-value" id="sv_conv">{conv_pct}%</div><div class="stat-label">Конверсия в продажу</div></div>
+  <div class="stat" style="min-width:180px"><div class="stat-value" id="sv_revenue" style="font-size:20px">{price}</div><div class="stat-label">Сумма сделок, ₽</div></div>
+  <div class="stat" style="min-width:180px"><div class="stat-value" id="sv_avg" style="font-size:20px">{avg_price}</div><div class="stat-label">Средний чек, ₽</div></div>
 </div>
 
 <h2>Лиды по дням (с 6 июня)</h2>
@@ -1325,33 +1453,51 @@ const base = {{
 }};
 
 // Daily leads chart
-new Chart(document.getElementById("dailyChart"),{{
-  type:"bar",
-  data:{{
-    labels:DATA.daily_labels,
-    datasets:[{{
-      label:"Лидов за день",
-      data:DATA.daily_values,
-      backgroundColor:"#4f8ef7",
-      borderRadius:3,
-    }}]
-  }},
-  options:{{...base,maintainAspectRatio:false,
-    plugins:{{...base.plugins,legend:{{display:false}}}},
-    scales:{{
-      x:{{...base.scales.x,ticks:{{color:"#e8eaf0"}}}},
-      y:{{...base.scales.y,beginAtZero:true}}
+(function(){{
+  const srcD = {{
+    all:    {{labels: DATA.daily_labels,               values: DATA.daily_values}},
+    prereg: {{labels: DATA.metrics_prereg.daily_labels, values: DATA.metrics_prereg.daily_values}},
+    web:    {{labels: DATA.metrics_web.daily_labels,    values: DATA.metrics_web.daily_values}},
+  }};
+  const chart = new Chart(document.getElementById("dailyChart"),{{
+    type:"bar",
+    data:{{
+      labels:DATA.daily_labels,
+      datasets:[{{
+        label:"Лидов за день",
+        data:DATA.daily_values,
+        backgroundColor:"#4f8ef7",
+        borderRadius:3,
+      }}]
+    }},
+    options:{{...base,maintainAspectRatio:false,
+      plugins:{{...base.plugins,legend:{{display:false}}}},
+      scales:{{
+        x:{{...base.scales.x,ticks:{{color:"#e8eaf0"}}}},
+        y:{{...base.scales.y,beginAtZero:true}}
+      }}
     }}
-  }}
-}});
+  }});
+  window.SRC_UPDATERS.push(function(src) {{
+    const d = srcD[src] || srcD.all;
+    chart.data.labels = d.labels;
+    chart.data.datasets[0].data = d.values;
+    chart.update();
+  }});
+}})();
 
 
 // Attributed funnel
 (function(){{
-  const stages = DATA.cumulative_funnel;
-  const topVal = stages[0] ? stages[0].count : 1;
+  const srcFunnels = {{
+    all:    DATA.cumulative_funnel,
+    prereg: DATA.metrics_prereg.cumulative_funnel,
+    web:    DATA.metrics_web.cumulative_funnel,
+  }};
+  let stages = DATA.cumulative_funnel;
+  let topVal = stages[0] ? stages[0].count : 1;
   const palette = ["#4f8ef7","#00cec9","#ffd32a","#ff6b81","#7ed6df","#a29bfe","#6ab04c"];
-  new Chart(document.getElementById("cumFunnelChart"),{{
+  const chart = new Chart(document.getElementById("cumFunnelChart"),{{
     type:"bar",
     data:{{
       labels: stages.map(s=>s.name),
@@ -1384,6 +1530,14 @@ new Chart(document.getElementById("dailyChart"),{{
         y:{{ticks:{{color:"#e8eaf0",font:{{size:13}}}},grid:{{color:"#2a2d3a"}}}}
       }}
     }}
+  }});
+  window.SRC_UPDATERS.push(function(src) {{
+    stages = (srcFunnels[src] || srcFunnels.all) || [];
+    topVal = stages[0] ? stages[0].count : 1;
+    chart.data.labels = stages.map(s=>s.name);
+    chart.data.datasets[0].data = stages.map(s=>s.count);
+    chart.data.datasets[0].backgroundColor = stages.map((_,i)=>palette[i]||"#4f8ef7");
+    chart.update();
   }});
 }})();
 
@@ -1647,158 +1801,159 @@ new Chart(document.getElementById("readyChart"),{{
 }});
 
 // Revenue by manager
-new Chart(document.getElementById("revenueChart"),{{
-  type:"bar",
-  data:{{
-    labels:DATA.revenue_mgr_ids.map(id=>DATA.managers[id]||id),
-    datasets:[{{
-      label:"Выручка, ₽",
-      data:DATA.revenue_values,
-      backgroundColor:"#6ab04c",
-      borderRadius:4,
-    }}]
-  }},
-  options:{{
-    maintainAspectRatio:false,
-    plugins:{{
-      legend:{{display:false}},
-      tooltip:{{callbacks:{{
-        label:function(c){{
-          return " " + c.raw.toLocaleString("ru-RU") + " ₽";
-        }}
-      }}}}
+// ── Revenue / Sales count / Conversion / Avg ticket per manager ── global toggle
+(function(){{
+  const S = {{
+    all:    {{ rev_ids: DATA.revenue_mgr_ids, rev_vals: DATA.revenue_values,
+               sc: DATA.mgr_sales_count, ap: DATA.mgr_avg_price, conv: DATA.mgr_conv }},
+    prereg: {{ rev_ids: DATA.metrics_prereg.revenue_mgr_ids, rev_vals: DATA.metrics_prereg.revenue_values,
+               sc: DATA.metrics_prereg.mgr_sales_count, ap: DATA.metrics_prereg.mgr_avg_price,
+               conv: DATA.metrics_prereg.mgr_conv }},
+    web:    {{ rev_ids: DATA.metrics_web.revenue_mgr_ids, rev_vals: DATA.metrics_web.revenue_values,
+               sc: DATA.metrics_web.mgr_sales_count, ap: DATA.metrics_web.mgr_avg_price,
+               conv: DATA.metrics_web.mgr_conv }},
+  }};
+
+  // Revenue chart
+  const revChart = new Chart(document.getElementById("revenueChart"),{{
+    type:"bar",
+    data:{{
+      labels:DATA.revenue_mgr_ids.map(id=>DATA.managers[id]||id),
+      datasets:[{{label:"Выручка, ₽",data:DATA.revenue_values,backgroundColor:"#6ab04c",borderRadius:4}}]
     }},
-    scales:{{
-      x:{{ticks:{{color:"#e8eaf0",maxRotation:30}},grid:{{color:"#1e2a3a"}}}},
-      y:{{beginAtZero:true,ticks:{{color:"#e8eaf0",callback:v=>v.toLocaleString("ru-RU")+" ₽"}},grid:{{color:"#1e2a3a"}}}}
+    options:{{
+      maintainAspectRatio:false,
+      plugins:{{legend:{{display:false}},tooltip:{{callbacks:{{label:function(c){{
+        return " " + c.raw.toLocaleString("ru-RU") + " ₽";
+      }}}}}}}},
+      scales:{{
+        x:{{ticks:{{color:"#e8eaf0",maxRotation:30}},grid:{{color:"#1e2a3a"}}}},
+        y:{{beginAtZero:true,ticks:{{color:"#e8eaf0",callback:v=>v.toLocaleString("ru-RU")+" ₽"}},grid:{{color:"#1e2a3a"}}}}
+      }}
+    }}
+  }});
+
+  // Sales count chart
+  const salesChart = (function(){{
+    const sc = DATA.mgr_sales_count;
+    const ids = Object.keys(sc).filter(id=>DATA.managers[id]).sort((a,b)=>sc[b]-sc[a]);
+    if(!ids.length) return null;
+    return new Chart(document.getElementById('mgrSalesChart'),{{
+      type:'bar',
+      data:{{
+        labels:ids.map(id=>DATA.managers[id]),
+        datasets:[{{label:'Продаж',data:ids.map(id=>sc[id]),backgroundColor:'#4f8ef7',borderRadius:4}}]
+      }},
+      options:{{
+        maintainAspectRatio:false,
+        plugins:{{legend:{{display:false}},tooltip:{{callbacks:{{label:function(c){{return ' '+c.raw+' продаж';}}}}}}}}
+        ,scales:{{
+          x:{{ticks:{{color:'#e8eaf0',maxRotation:30}},grid:{{color:'#1e2a3a'}}}},
+          y:{{beginAtZero:true,ticks:{{color:'#e8eaf0',stepSize:1}},grid:{{color:'#1e2a3a'}}}}
+        }}
+      }}
+    }});
+  }})();
+
+  // Manager conversion chart
+  const convChart = (function(){{
+    const conv = DATA.mgr_conv;
+    const ids = Object.keys(conv).filter(id=>DATA.managers[id]&&conv[id].inwork>0).sort((a,b)=>conv[b].pct-conv[a].pct);
+    if(!ids.length) return null;
+    return new Chart(document.getElementById('mgrConvChart'),{{
+      type:'bar',
+      data:{{
+        labels:ids.map(id=>DATA.managers[id]),
+        datasets:[{{
+          label:'Конверсия %',
+          data:ids.map(id=>conv[id].pct),
+          backgroundColor:ids.map(id=>conv[id].pct>=5?'#6ab04c':conv[id].pct>=2?'#f5a623':'#eb4d4b'),
+          borderRadius:4
+        }}]
+      }},
+      options:{{
+        indexAxis:'y',maintainAspectRatio:false,
+        plugins:{{legend:{{display:false}},tooltip:{{callbacks:{{label:function(c){{
+          const id=ids[c.dataIndex];const d=conv[id];
+          return ' '+c.raw+'% ('+d.sales+' продаж из '+d.inwork+' в работе)';
+        }}}}}}}},
+        scales:{{
+          x:{{beginAtZero:true,max:10,ticks:{{color:'#e8eaf0',callback:v=>v+'%'}},grid:{{color:'#2a2d3a'}}}},
+          y:{{ticks:{{color:'#e8eaf0',font:{{size:12}}}},grid:{{color:'#2a2d3a'}}}}
+        }}
+      }}
+    }});
+  }})();
+
+  // Avg ticket chart
+  const avgChart = (function(){{
+    const ap = DATA.mgr_avg_price;
+    const ids = Object.keys(ap).filter(id=>DATA.managers[id]&&ap[id]>0).sort((a,b)=>ap[b]-ap[a]);
+    if(!ids.length) return null;
+    return new Chart(document.getElementById('mgrAvgChart'),{{
+      type:'bar',
+      data:{{
+        labels:ids.map(id=>DATA.managers[id]),
+        datasets:[{{label:'Средний чек, ₽',data:ids.map(id=>ap[id]),backgroundColor:'#a29bfe',borderRadius:4}}]
+      }},
+      options:{{
+        maintainAspectRatio:false,
+        plugins:{{legend:{{display:false}},tooltip:{{callbacks:{{label:function(c){{return ' '+c.raw.toLocaleString('ru-RU')+' ₽';}}}}}}}}
+        ,scales:{{
+          x:{{ticks:{{color:'#e8eaf0',maxRotation:30}},grid:{{color:'#1e2a3a'}}}},
+          y:{{beginAtZero:true,ticks:{{color:'#e8eaf0',callback:v=>v.toLocaleString('ru-RU')+' ₽'}},grid:{{color:'#1e2a3a'}}}}
+        }}
+      }}
+    }});
+  }})();
+
+  function applyRevSrc(src) {{
+    const d = S[src] || S.all;
+    // Revenue
+    revChart.data.labels = (d.rev_ids||[]).map(id=>DATA.managers[id]||id);
+    revChart.data.datasets[0].data = d.rev_vals||[];
+    revChart.update();
+    // Sales count
+    if(salesChart) {{
+      const sc = d.sc||{{}};
+      const ids = Object.keys(sc).filter(id=>DATA.managers[id]).sort((a,b)=>(sc[b]||0)-(sc[a]||0));
+      salesChart.data.labels = ids.map(id=>DATA.managers[id]);
+      salesChart.data.datasets[0].data = ids.map(id=>sc[id]||0);
+      salesChart.update();
+    }}
+    // Conversion
+    if(convChart) {{
+      const conv = d.conv||{{}};
+      const ids = Object.keys(conv).filter(id=>DATA.managers[id]&&(conv[id]?.inwork||0)>0).sort((a,b)=>(conv[b]?.pct||0)-(conv[a]?.pct||0));
+      convChart.data.labels = ids.map(id=>DATA.managers[id]);
+      convChart.data.datasets[0].data = ids.map(id=>(conv[id]?.pct||0));
+      convChart.data.datasets[0].backgroundColor = ids.map(id=>{{const p=conv[id]?.pct||0;return p>=5?'#6ab04c':p>=2?'#f5a623':'#eb4d4b';}});
+      convChart.update();
+    }}
+    // Avg ticket
+    if(avgChart) {{
+      const ap = d.ap||{{}};
+      const ids = Object.keys(ap).filter(id=>DATA.managers[id]&&(ap[id]||0)>0).sort((a,b)=>(ap[b]||0)-(ap[a]||0));
+      avgChart.data.labels = ids.map(id=>DATA.managers[id]);
+      avgChart.data.datasets[0].data = ids.map(id=>ap[id]||0);
+      avgChart.update();
     }}
   }}
-}});
-
-// Sales count by manager
-(function(){{
-  const sc = DATA.mgr_sales_count;
-  const ids = Object.keys(sc)
-    .filter(id => DATA.managers[id])
-    .sort((a,b) => sc[b] - sc[a]);
-  if(!ids.length) return;
-  new Chart(document.getElementById('mgrSalesChart'), {{
-    type: 'bar',
-    data: {{
-      labels: ids.map(id => DATA.managers[id]),
-      datasets: [{{
-        label: 'Продаж',
-        data: ids.map(id => sc[id]),
-        backgroundColor: '#4f8ef7',
-        borderRadius: 4,
-      }}]
-    }},
-    options: {{
-      maintainAspectRatio: false,
-      plugins: {{
-        legend: {{display: false}},
-        tooltip: {{callbacks: {{label: function(c){{ return ' ' + c.raw + ' продаж'; }}}}}}
-      }},
-      scales: {{
-        x: {{ticks: {{color: '#e8eaf0', maxRotation: 30}}, grid: {{color: '#1e2a3a'}}}},
-        y: {{beginAtZero: true, ticks: {{color: '#e8eaf0', stepSize: 1}}, grid: {{color: '#1e2a3a'}}}}
-      }}
-    }}
-  }});
-}})();
-
-// Manager conversion: Взято в работу → Продажи
-(function(){{
-  const conv = DATA.mgr_conv;
-  const ids = Object.keys(conv)
-    .filter(id => DATA.managers[id] && conv[id].inwork > 0)
-    .sort((a,b) => conv[b].pct - conv[a].pct);
-  if(!ids.length) return;
-  const pcts   = ids.map(id => conv[id].pct);
-  const labels = ids.map(id => DATA.managers[id]);
-  const bgColors = pcts.map(p => p >= 5 ? '#6ab04c' : p >= 2 ? '#f5a623' : '#eb4d4b');
-  new Chart(document.getElementById('mgrConvChart'), {{
-    type: 'bar',
-    data: {{
-      labels: labels,
-      datasets: [{{
-        label: 'Конверсия %',
-        data: pcts,
-        backgroundColor: bgColors,
-        borderRadius: 4,
-      }}]
-    }},
-    options: {{
-      indexAxis: 'y',
-      maintainAspectRatio: false,
-      plugins: {{
-        legend: {{display: false}},
-        tooltip: {{callbacks: {{
-          label: function(c) {{
-            const id = ids[c.dataIndex];
-            const d = conv[id];
-            return ' ' + c.raw + '% (' + d.sales + ' продаж из ' + d.inwork + ' в работе)';
-          }}
-        }}}}
-      }},
-      scales: {{
-        x: {{
-          beginAtZero: true, max: 10,
-          ticks: {{color: '#e8eaf0', callback: function(v){{ return v + '%'; }}}},
-          grid: {{color: '#2a2d3a'}}
-        }},
-        y: {{ticks: {{color: '#e8eaf0', font: {{size: 12}}}}, grid: {{color: '#2a2d3a'}}}}
-      }}
-    }}
-  }});
-}})();
-
-// Avg ticket by manager
-(function(){{
-  const ap = DATA.mgr_avg_price;
-  const ids = Object.keys(ap)
-    .filter(id => DATA.managers[id] && ap[id] > 0)
-    .sort((a,b) => ap[b] - ap[a]);
-  if(!ids.length) return;
-  new Chart(document.getElementById('mgrAvgChart'), {{
-    type: 'bar',
-    data: {{
-      labels: ids.map(id => DATA.managers[id]),
-      datasets: [{{
-        label: 'Средний чек, ₽',
-        data: ids.map(id => ap[id]),
-        backgroundColor: '#a29bfe',
-        borderRadius: 4,
-      }}]
-    }},
-    options: {{
-      maintainAspectRatio: false,
-      plugins: {{
-        legend: {{display: false}},
-        tooltip: {{callbacks: {{
-          label: function(c){{ return ' ' + c.raw.toLocaleString('ru-RU') + ' ₽'; }}
-        }}}}
-      }},
-      scales: {{
-        x: {{ticks: {{color: '#e8eaf0', maxRotation: 30}}, grid: {{color: '#1e2a3a'}}}},
-        y: {{
-          beginAtZero: true,
-          ticks: {{color: '#e8eaf0', callback: function(v){{ return v.toLocaleString('ru-RU') + ' ₽'; }}}},
-          grid: {{color: '#1e2a3a'}}
-        }}
-      }}
-    }}
-  }});
+  window.SRC_UPDATERS.push(applyRevSrc);
 }})();
 
 // Sales by tariff — horizontal bar
 (function(){{
-  if(!DATA.tariff_labels.length) return;
+  const srcT = {{
+    all:    {{labels: DATA.tariff_labels,               values: DATA.tariff_values}},
+    prereg: {{labels: DATA.metrics_prereg.tariff_labels, values: DATA.metrics_prereg.tariff_values}},
+    web:    {{labels: DATA.metrics_web.tariff_labels,    values: DATA.metrics_web.tariff_values}},
+  }};
   const palette = [
     '#4f8ef7','#6ab04c','#f5a623','#a29bfe','#fd79a8','#00cec9',
     '#e17055','#fdcb6e','#74b9ff','#55efc4','#b2bec3','#636e72'
   ];
-  new Chart(document.getElementById('tariffChart'), {{
+  const tariffChart = new Chart(document.getElementById('tariffChart'), {{
     type: 'bar',
     data: {{
       labels: DATA.tariff_labels,
@@ -1816,20 +1971,23 @@ new Chart(document.getElementById("revenueChart"),{{
         legend: {{display: false}},
         tooltip: {{callbacks: {{
           label: function(c) {{
-            const total = DATA.tariff_values.reduce((a,b)=>a+b,0);
+            const total = tariffChart.data.datasets[0].data.reduce((a,b)=>a+b,0);
             return ' ' + c.raw + ' сделок (' + Math.round(c.raw/total*100) + '%)';
           }}
         }}}}
       }},
       scales: {{
-        x: {{
-          beginAtZero: true,
-          ticks: {{color: '#e8eaf0', stepSize: 1}},
-          grid: {{color: '#1e2a3a'}}
-        }},
+        x: {{beginAtZero: true, ticks: {{color: '#e8eaf0', stepSize: 1}}, grid: {{color: '#1e2a3a'}}}},
         y: {{ticks: {{color: '#e8eaf0', font: {{size: 12}}}}, grid: {{color: '#1e2a3a'}}}}
       }}
     }}
+  }});
+  window.SRC_UPDATERS.push(function(src) {{
+    const d = srcT[src] || srcT.all;
+    tariffChart.data.labels = d.labels || [];
+    tariffChart.data.datasets[0].data = d.values || [];
+    tariffChart.data.datasets[0].backgroundColor = (d.labels||[]).map((_,i)=>palette[i%palette.length]);
+    tariffChart.update();
   }});
 }})();
 
@@ -2097,60 +2255,125 @@ new Chart(document.getElementById("revenueChart"),{{
 }})();
 
 // Closure reasons horizontal bar
-new Chart(document.getElementById("reasonChart"),{{
-  type:"bar",
-  data:{{
-    labels:DATA.reason_labels,
-    datasets:[{{
-      label:"Сделок",
-      data:DATA.reason_values,
-      backgroundColor:"#eb4d4b",
-      borderRadius:4,
-    }}]
-  }},
-  options:{{
-    indexAxis:"y",
-    maintainAspectRatio:false,
-    plugins:{{
-      legend:{{display:false}},
-      tooltip:{{callbacks:{{
-        label:function(c){{
-          const total=DATA.reason_values.reduce((a,b)=>a+b,0);
-          return ` ${{c.raw}} сделок (${{Math.round(c.raw/total*100)}}%)`;
-        }}
-      }}}}
+// Closure reasons chart — global toggle
+(function(){{
+  const srcR = {{
+    all:    {{labels: DATA.reason_labels,               values: DATA.reason_values}},
+    prereg: {{labels: DATA.metrics_prereg.reason_labels, values: DATA.metrics_prereg.reason_values}},
+    web:    {{labels: DATA.metrics_web.reason_labels,    values: DATA.metrics_web.reason_values}},
+  }};
+  const reasonChart = new Chart(document.getElementById("reasonChart"),{{
+    type:"bar",
+    data:{{
+      labels:DATA.reason_labels,
+      datasets:[{{
+        label:"Сделок",
+        data:DATA.reason_values,
+        backgroundColor:"#eb4d4b",
+        borderRadius:4,
+      }}]
     }},
-    scales:{{
-      x:{{beginAtZero:true,ticks:{{color:"#e8eaf0"}},grid:{{color:"#1e2a3a"}}}},
-      y:{{ticks:{{color:"#e8eaf0",font:{{size:12}}}},grid:{{display:false}}}}
+    options:{{
+      indexAxis:"y",
+      maintainAspectRatio:false,
+      plugins:{{
+        legend:{{display:false}},
+        tooltip:{{callbacks:{{
+          label:function(c){{
+            const total=reasonChart.data.datasets[0].data.reduce((a,b)=>a+b,0);
+            return ` ${{c.raw}} сделок (${{Math.round(c.raw/total*100)}}%)`;
+          }}
+        }}}}
+      }},
+      scales:{{
+        x:{{beginAtZero:true,ticks:{{color:"#e8eaf0"}},grid:{{color:"#1e2a3a"}}}},
+        y:{{ticks:{{color:"#e8eaf0",font:{{size:12}}}},grid:{{display:false}}}}
+      }}
     }}
-  }}
-}});
+  }});
+  window.SRC_UPDATERS.push(function(src) {{
+    const d = srcR[src] || srcR.all;
+    reasonChart.data.labels = d.labels || [];
+    reasonChart.data.datasets[0].data = d.values || [];
+    reasonChart.update();
+  }});
+}})();
 
-// Table
-const tbody=document.getElementById("mgrTable");
-mgrIds.forEach(id=>{{
-  const d=DATA.mgr_viz[id]||{{}};
-  const tot=Object.values(d).reduce((s,v)=>s+v,0);
-  const ov=DATA.overdue[id]||0;
-  const ovColor=ov>20?"#eb4d4b":ov>5?"#f5a623":"#6ab04c";
-  tbody.innerHTML+=`<tr>
-    <td>${{DATA.managers[id]||id}}</td>
-    <td class="num">${{fmt(tot)}}</td>
-    <td class="num"><span class="tag tag-incoming">${{d.incoming||0}}</span></td>
-    <td class="num"><span class="tag tag-new-lead">${{d.new_lead||0}}</span></td>
-    <td class="num"><span class="tag tag-om">${{d.om||0}}</span></td>
-    <td class="num"><span class="tag tag-in-work">${{d.in_work||0}}</span></td>
-    <td class="num"><span class="tag tag-contact">${{d.contact||0}}</span></td>
-    <td class="num"><span class="tag tag-qualified">${{d.qualified||0}}</span></td>
-    <td class="num"><span class="tag tag-ndz">${{d.ndz||0}}</span></td>
-    <td class="num"><span class="tag tag-offer">${{d.offer||0}}</span></td>
-    <td class="num"><span class="tag tag-delayed">${{d.delayed||0}}</span></td>
-    <td class="num"><span class="tag tag-sale">${{d.sale||0}}</span></td>
-    <td class="num"><span class="tag tag-lost">${{d.lost||0}}</span></td>
-    <td class="num" style="color:${{ovColor}}">${{ov}}</td>
-  </tr>`;
-}});
+// Manager detail table — global toggle
+(function(){{
+  const srcDetail = {{
+    all:    DATA.mgr_detail,
+    prereg: DATA.metrics_prereg.mgr_detail,
+    web:    DATA.metrics_web.mgr_detail,
+  }};
+  function renderTable(vizData) {{
+    const tbody=document.getElementById("mgrTable");
+    tbody.innerHTML="";
+    mgrIds.forEach(id=>{{
+      const d=vizData[id]||{{}};
+      const tot=Object.values(d).reduce((s,v)=>s+v,0);
+      const ov=DATA.overdue[id]||0;
+      const ovColor=ov>20?"#eb4d4b":ov>5?"#f5a623":"#6ab04c";
+      tbody.innerHTML+=`<tr>
+        <td>${{DATA.managers[id]||id}}</td>
+        <td class="num">${{fmt(tot)}}</td>
+        <td class="num"><span class="tag tag-incoming">${{d.incoming||0}}</span></td>
+        <td class="num"><span class="tag tag-new-lead">${{d.new_lead||0}}</span></td>
+        <td class="num"><span class="tag tag-om">${{d.om||0}}</span></td>
+        <td class="num"><span class="tag tag-in-work">${{d.in_work||0}}</span></td>
+        <td class="num"><span class="tag tag-contact">${{d.contact||0}}</span></td>
+        <td class="num"><span class="tag tag-qualified">${{d.qualified||0}}</span></td>
+        <td class="num"><span class="tag tag-ndz">${{d.ndz||0}}</span></td>
+        <td class="num"><span class="tag tag-offer">${{d.offer||0}}</span></td>
+        <td class="num"><span class="tag tag-delayed">${{d.delayed||0}}</span></td>
+        <td class="num"><span class="tag tag-sale">${{d.sale||0}}</span></td>
+        <td class="num"><span class="tag tag-lost">${{d.lost||0}}</span></td>
+        <td class="num" style="color:${{ovColor}}">${{ov}}</td>
+      </tr>`;
+    }});
+  }}
+  renderTable(DATA.mgr_detail);
+  window.SRC_UPDATERS.push(function(src) {{
+    renderTable(srcDetail[src] || srcDetail.all);
+  }});
+}})();
+
+// Stat cards update — global toggle
+(function(){{
+  const gc = DATA.group_counts || {{}};
+  const srcStats = {{
+    all: {{
+      total:    DATA.total_all || 0,
+      in_work:  (gc.in_work||0)+(gc.contact||0)+(gc.qualified||0),
+      ndz:      gc.ndz||0,
+      offer:    gc.offer||0,
+      delayed:  gc.delayed||0,
+      invoiced: gc.invoiced||0,
+      sale_cnt: gc.sale||0,
+      revenue:  DATA.revenue_all||0,
+      avg_price: DATA.avg_price_all||0,
+      conv_pct: DATA.total_all ? Math.round((gc.sale||0)/DATA.total_all*10000)/100 : 0,
+    }},
+    prereg: DATA.metrics_prereg,
+    web:    DATA.metrics_web,
+  }};
+  function numFmt(n){{ return Math.round(n||0).toLocaleString("ru-RU"); }}
+  function applyStats(d) {{
+    document.getElementById("sv_total").textContent    = numFmt(d.total);
+    document.getElementById("sv_inwork").textContent   = numFmt(d.in_work);
+    document.getElementById("sv_ndz").textContent      = numFmt(d.ndz);
+    document.getElementById("sv_offer").textContent    = numFmt(d.offer);
+    document.getElementById("sv_delayed").textContent  = numFmt(d.delayed);
+    document.getElementById("sv_invoiced").textContent = numFmt(d.invoiced);
+    document.getElementById("sv_sale").textContent     = numFmt(d.sale_cnt);
+    document.getElementById("sv_conv").textContent     = (d.conv_pct||0).toFixed(2)+"%";
+    document.getElementById("sv_revenue").textContent  = numFmt(d.revenue)+" ₽";
+    document.getElementById("sv_avg").textContent      = numFmt(d.avg_price)+" ₽";
+  }}
+  window.SRC_UPDATERS.push(function(src) {{
+    applyStats(srcStats[src] || srcStats.all);
+  }});
+}})();
 </script>
 </body>
 </html>
@@ -2167,6 +2390,9 @@ def generate_html(report):
     json_data = json.dumps({
         "sorted_statuses": report["sorted_statuses"],
         "group_counts":    report["group_counts"],
+        "total_all":       report["total"],
+        "revenue_all":     report["total_price"],
+        "avg_price_all":   report["avg_price"],
         "managers":        {str(k): v for k, v in report["managers"].items()},
         "mgr_viz":          report["mgr_viz"],
         "mgr_viz_prereg":   report["mgr_viz_prereg"],
@@ -2198,6 +2424,8 @@ def generate_html(report):
         "mgr_country_by_week":      report["mgr_country_by_week"],
         "mgr_country_data_prereg":  report["mgr_country_data_prereg"],
         "mgr_country_data_web":     report["mgr_country_data_web"],
+        "metrics_prereg":   report["metrics_prereg"],
+        "metrics_web":      report["metrics_web"],
         "tariff_labels":    report["tariff_labels"],
         "tariff_values":    report["tariff_values"],
         "revenue_mgr_ids":  report["revenue_mgr_ids"],
