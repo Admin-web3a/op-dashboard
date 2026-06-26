@@ -16,12 +16,22 @@ from collections import Counter, defaultdict
 TOKEN  = os.environ["AMO_TOKEN"]
 DOMAIN = "simmihur.amocrm.ru"
 
-SOURCE_FIELD_ID = 1321741
-SOURCE_ENUM_ID  = 953633    # Анкета перезаписи 06.2026
-UPDATED_FROM    = 1743465600  # 2026-04-01
+SOURCE_FIELD_ID       = 1321741
+SOURCE_PREREG_ID      = 953633       # Анкета перезаписи 06.2026 (known enum ID)
+SOURCE_WEB_ORDER_NAME = "Заказ веб 06.26"      # будет разрешён по имени
+SOURCE_WEB_PREPAY_NAME= "Предоплата веб 06.26" # будет разрешён по имени
+UPDATED_FROM          = 1743465600   # 2026-04-01
 
-REASON_FIELD_ID = 180637    # Причина закрытия
-TEST_REASON     = "ТЕСТ"    # Исключаем тестовые сделки
+REASON_FIELD_ID = 180637
+TEST_REASON     = "ТЕСТ"            # Полное исключение — не попадает ни в один чарт
+CONVERT_REASON  = "Оставил Заказ"  # Предзапись закрыта, т.к. клиент оформил заказ на вебинаре
+
+# Причины закрытия, которые исключаем из чарта «Причины закрытия»
+# (невалидные лиды — не реальные отказы)
+INVALID_REASONS = {
+    "Дубль", "тест", "спам", "некорректные данные",
+    "уже покупал Инфинити", "уже покупал ментор",
+}
 
 MANAGERS = {
     12377210: "Никита Саламатин",
@@ -132,6 +142,32 @@ def api_get(path):
 
 # ── Fetch ─────────────────────────────────────────────────────────────────────
 
+def resolve_source_enum_ids():
+    """Fetch SOURCE_FIELD_ID definition and return {enum_id: source_type}.
+    Falls back gracefully if new sources aren't in CRM yet."""
+    result = {SOURCE_PREREG_ID: "prereg"}
+    try:
+        data = api_get(f"leads/custom_fields/{SOURCE_FIELD_ID}")
+        enums = data.get("enums", [])
+        if not enums:
+            # Some CRM setups return enums nested differently
+            enums = data.get("values", [])
+        name_map = {e.get("value", e.get("enum", "")): e["id"] for e in enums}
+        for name, src_type in [
+            (SOURCE_WEB_ORDER_NAME,  "web_order"),
+            (SOURCE_WEB_PREPAY_NAME, "web_prepay"),
+        ]:
+            eid = name_map.get(name)
+            if eid:
+                result[eid] = src_type
+                print(f"  Resolved '{name}' → enum_id {eid}")
+            else:
+                print(f"  '{name}' not found in CRM yet — will track when added")
+    except Exception as e:
+        print(f"  Warning: could not resolve source enums: {e}")
+    return result
+
+
 def fetch_pipelines():
     data = api_get("leads/pipelines")
     statuses = {}
@@ -145,7 +181,8 @@ def fetch_pipelines():
             }
     return statuses
 
-def fetch_filtered_leads(statuses):
+def fetch_filtered_leads(statuses, source_enum_ids):
+    """Fetch leads matching any of source_enum_ids; tags each with lead['_source']."""
     filtered = []
     consecutive_empty = 0
     page = 1
@@ -168,7 +205,9 @@ def fetch_filtered_leads(statuses):
             for cf in (lead.get("custom_fields_values") or []):
                 if cf.get("field_id") == SOURCE_FIELD_ID:
                     for v in cf.get("values", []):
-                        if v.get("enum_id") == SOURCE_ENUM_ID:
+                        eid = v.get("enum_id")
+                        if eid in source_enum_ids:
+                            lead["_source"] = source_enum_ids[eid]
                             filtered.append(lead)
                             matched += 1
                             break
@@ -491,8 +530,12 @@ def build_report():
     print("Fetching pipelines…")
     statuses = fetch_pipelines()
 
+    print("Resolving source enum IDs…")
+    source_enum_ids = resolve_source_enum_ids()
+    print(f"  Tracking sources: { {v: k for k,v in source_enum_ids.items()} }")
+
     print("Fetching leads…")
-    leads = fetch_filtered_leads(statuses)
+    leads = fetch_filtered_leads(statuses, source_enum_ids)
     total = len(leads)
     total_price = sum(l.get("price") or 0 for l in leads)
 
@@ -505,8 +548,29 @@ def build_report():
         group = statuses.get(sid, {}).get("group", "active")
         group_counts[group] += 1
 
-    # Per-manager (managers only) using viz groups
-    mgr_viz = defaultdict(Counter)
+    # Split leads by source type
+    leads_prereg     = [l for l in leads if l.get("_source") == "prereg"]
+    leads_web_order  = [l for l in leads if l.get("_source") == "web_order"]
+    leads_web_prepay = [l for l in leads if l.get("_source") == "web_prepay"]
+    leads_web        = leads_web_order + leads_web_prepay
+
+    # Helper: compute mgr_viz for any lead subset
+    def _mgr_viz(subset):
+        mv = defaultdict(Counter)
+        for lead in subset:
+            uid = lead.get("responsible_user_id")
+            if uid not in MANAGERS:
+                continue
+            sid = lead.get("status_id")
+            grp = statuses.get(sid, {}).get("group", "active")
+            vg  = VIZ_GROUP.get(grp, "active")
+            mv[uid][vg] += 1
+        return {str(uid): dict(mv[uid]) for uid in MANAGERS}
+
+    # Per-manager (managers only) using viz groups — all sources combined
+    mgr_viz         = defaultdict(Counter)
+    mgr_viz_prereg  = defaultdict(Counter)
+    mgr_viz_web     = defaultdict(Counter)
     for lead in leads:
         uid = lead.get("responsible_user_id")
         if uid not in MANAGERS:
@@ -515,6 +579,48 @@ def build_report():
         grp = statuses.get(sid, {}).get("group", "active")
         vg  = VIZ_GROUP.get(grp, "active")
         mgr_viz[uid][vg] += 1
+        src = lead.get("_source", "prereg")
+        if src == "prereg":
+            mgr_viz_prereg[uid][vg] += 1
+        else:
+            mgr_viz_web[uid][vg] += 1
+
+    mgr_viz_prereg_d = {str(uid): dict(mgr_viz_prereg[uid]) for uid in MANAGERS}
+    mgr_viz_web_d    = {str(uid): dict(mgr_viz_web[uid])    for uid in MANAGERS}
+
+    # ── Webinar funnel metrics ─────────────────────────────────────────────────
+    prereg_converted     = 0   # closed → "Оставил Заказ"
+    prereg_disqualified  = 0   # closed → invalid reason (Дубль, спам…)
+    prereg_real_lost     = 0   # closed → other reason (genuine refusal)
+
+    for lead in leads_prereg:
+        grp = statuses.get(lead.get("status_id"), {}).get("group", "")
+        if grp != "lost":
+            continue
+        reason = None
+        for cf in (lead.get("custom_fields_values") or []):
+            if cf.get("field_id") == REASON_FIELD_ID:
+                vals = cf.get("values") or []
+                if vals:
+                    reason = vals[0].get("value")
+        if reason == CONVERT_REASON:
+            prereg_converted += 1
+        elif reason in INVALID_REASONS:
+            prereg_disqualified += 1
+        else:
+            prereg_real_lost += 1
+
+    web_order_total  = len(leads_web_order)
+    web_prepay_total = len(leads_web_prepay)
+    web_order_sales  = sum(
+        1 for l in leads_web_order
+        if statuses.get(l.get("status_id"), {}).get("group") == "sale"
+    )
+    web_prepay_sales = sum(
+        1 for l in leads_web_prepay
+        if statuses.get(l.get("status_id"), {}).get("group") == "sale"
+    )
+    web_total_sales  = web_order_sales + web_prepay_sales
 
     print("Fetching overdue tasks…")
     filtered_lead_ids = {lead["id"] for lead in leads if lead.get("id")}
@@ -564,6 +670,24 @@ def build_report():
         country_counts["Не определено"] = undefined_count
     rest_lbl = REST_LBL if rest_total else None
     top_country_set = set(top_labels)
+
+    def _country_labels_values(lead_subset):
+        """Top-N country breakdown for any subset of leads."""
+        counts = Counter(lead_to_country.get(l["id"], "Не определено") for l in lead_subset)
+        undef = counts.pop("Не определено", 0)
+        common = counts.most_common()
+        top = common[:TOP_N]
+        rest_c = common[TOP_N:]
+        rt = sum(v for _, v in rest_c) + undef
+        lbs = [c for c, _ in top]
+        vls = [v for _, v in top]
+        if rt:
+            lbs.append(REST_LBL)
+            vls.append(rt)
+        return lbs, vls
+
+    country_labels_prereg, country_values_prereg = _country_labels_values(leads_prereg)
+    country_labels_web,    country_values_web    = _country_labels_values(leads_web)
 
     # ── Status distribution by country (100% stacked) ─────────────────────────
     # Simplified display groups for the stacked bar
@@ -766,16 +890,19 @@ def build_report():
     ready_values = [ready_counts[k] for k in ready_labels]
 
     # Closure reasons for lost leads
-    LOST_STATUS_ID = 143
+    # Exclude INVALID_REASONS (дубли, спам…) and TEST_REASON; keep CONVERT_REASON visible
     reason_counts = Counter()
     for lead in leads:
-        if lead.get("status_id") != LOST_STATUS_ID:
+        grp = statuses.get(lead.get("status_id"), {}).get("group", "")
+        if grp != "lost":
             continue
         for cf in (lead.get("custom_fields_values") or []):
             if cf.get("field_id") == REASON_FIELD_ID:
                 vals = cf.get("values") or []
                 if vals:
-                    reason_counts[vals[0].get("value", "?")] += 1
+                    reason = vals[0].get("value", "?")
+                    if reason not in INVALID_REASONS and reason != TEST_REASON:
+                        reason_counts[reason] += 1
 
     # Sort by count descending
     reason_labels = [r for r, _ in reason_counts.most_common()]
@@ -864,6 +991,8 @@ def build_report():
         "sorted_statuses":  sorted_statuses,
         "managers":         MANAGERS,
         "mgr_viz":          {str(uid): dict(cnts) for uid, cnts in mgr_viz.items()},
+        "mgr_viz_prereg":   mgr_viz_prereg_d,
+        "mgr_viz_web":      mgr_viz_web_d,
         "overdue":          {str(uid): cnt for uid, cnt in overdue.items()},
         "daily_labels":     list(daily_counts.keys()),
         "daily_values":     list(daily_counts.values()),
@@ -879,8 +1008,12 @@ def build_report():
         "conv_pct":         conv_pct,
         "reason_labels":    reason_labels,
         "reason_values":    reason_values,
-        "country_labels":   country_labels,
-        "country_values":   country_values,
+        "country_labels":         country_labels,
+        "country_values":         country_values,
+        "country_labels_prereg":  country_labels_prereg,
+        "country_values_prereg":  country_values_prereg,
+        "country_labels_web":     country_labels_web,
+        "country_values_web":     country_values_web,
         "cstat_datasets":   cstat_datasets,
         "cstat_by_week":    cstat_by_week,
         "mgr_country_cols":     mgr_country_cols,
@@ -896,6 +1029,14 @@ def build_report():
         "mgr_conv":         mgr_conv_data,
         "cumulative_funnel": cumulative_funnel,
         "cohort_table":      cohort_table,
+        # Webinar funnel
+        "prereg_total":       len(leads_prereg),
+        "prereg_converted":   prereg_converted,
+        "prereg_disqualified": prereg_disqualified,
+        "prereg_real_lost":   prereg_real_lost,
+        "web_order_total":    web_order_total,
+        "web_prepay_total":   web_prepay_total,
+        "web_total_sales":    web_total_sales,
     }
 
 # ── HTML ──────────────────────────────────────────────────────────────────────
@@ -1051,6 +1192,7 @@ function triggerRefresh() {{
 <div class="chart-card" style="height:320px"><canvas id="convFunnelChart"></canvas></div>
 
 <h2>Лиды по менеджерам</h2>
+<div id="mgrSourceBtns" style="display:flex;gap:8px;margin-bottom:12px"></div>
 <div class="chart-card" style="height:600px"><canvas id="mgrChart"></canvas></div>
 
 <h2>Просроченные задачи по менеджерам</h2>
@@ -1084,6 +1226,7 @@ function triggerRefresh() {{
   </div>
   <div>
     <h2>Лиды по странам</h2>
+    <div id="countrySourceBtns" style="display:flex;gap:8px;margin-bottom:12px"></div>
     <div class="chart-card" style="height:380px"><canvas id="countryChart"></canvas></div>
   </div>
 </div>
@@ -1096,6 +1239,11 @@ function triggerRefresh() {{
 <div id="mgrCountryWeekBtns" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px"></div>
 <div class="chart-card" style="overflow-x:auto;padding:16px">
   <table id="mgrCountryTable" style="width:100%;border-collapse:collapse;font-size:13px"></table>
+</div>
+
+<h2>Воронка вебинара 06.26</h2>
+<div id="webinarFunnel" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:16px">
+  <!-- filled by JS -->
 </div>
 
 <h2>Причины закрытия сделок</h2>
@@ -1273,21 +1421,58 @@ const mgrIds=Object.keys(DATA.mgr_viz).sort((a,b)=>{{
   const tb=Object.values(DATA.mgr_viz[b]).reduce((s,v)=>s+v,0);
   return tb-ta;
 }});
-new Chart(document.getElementById("mgrChart"),{{
-  type:"bar",
-  data:{{
-    labels:mgrIds.map(id=>DATA.managers[id]||id),
-    datasets:VORDER.map(g=>({{
-      label:VLABELS[g],
-      data:mgrIds.map(id=>(DATA.mgr_viz[id]||{{}})[g]||0),
-      backgroundColor:VCOLORS[g],borderRadius:2
-    }}))
-  }},
-  options:{{...base,maintainAspectRatio:false,scales:{{
-    x:{{...base.scales.x,stacked:true}},
-    y:{{...base.scales.y,stacked:true}}
-  }}}}
-}});
+// Mgr chart with source toggle
+(function(){{
+  const srcMaps = {{
+    all:    DATA.mgr_viz,
+    prereg: DATA.mgr_viz_prereg,
+    web:    DATA.mgr_viz_web,
+  }};
+  const srcLabels = {{all:"Все источники", prereg:"Предзапись", web:"Вебинар"}};
+  let activeSrc = "all";
+
+  const btnStyle = (a) =>
+    "padding:5px 12px;border-radius:5px;border:none;cursor:pointer;font-size:12px;font-weight:600;" +
+    (a ? "background:#4f8ef7;color:#fff;" : "background:#1e2a3a;color:#a0aec0;");
+
+  const btnWrap = document.getElementById("mgrSourceBtns");
+  const chart = new Chart(document.getElementById("mgrChart"), {{
+    type:"bar",
+    data:{{
+      labels:mgrIds.map(id=>DATA.managers[id]||id),
+      datasets:VORDER.map(g=>({{
+        label:VLABELS[g],
+        data:mgrIds.map(id=>(DATA.mgr_viz[id]||{{}})[g]||0),
+        backgroundColor:VCOLORS[g],borderRadius:2
+      }}))
+    }},
+    options:{{...base,maintainAspectRatio:false,scales:{{
+      x:{{...base.scales.x,stacked:true}},
+      y:{{...base.scales.y,stacked:true}}
+    }}}}
+  }});
+
+  function renderMgrBtns() {{
+    btnWrap.innerHTML = "";
+    Object.keys(srcMaps).forEach(k => {{
+      const btn = document.createElement("button");
+      btn.textContent = srcLabels[k];
+      btn.style.cssText = btnStyle(k === activeSrc);
+      btn.onclick = function() {{
+        activeSrc = k;
+        const viz = srcMaps[k];
+        chart.data.datasets.forEach((ds, i) => {{
+          const g = VORDER[i];
+          ds.data = mgrIds.map(id => (viz[id]||{{}})[g]||0);
+        }});
+        chart.update();
+        renderMgrBtns();
+      }};
+      btnWrap.appendChild(btn);
+    }});
+  }}
+  renderMgrBtns();
+}})();
 
 // Overdue
 const ovIds=Object.keys(DATA.overdue).filter(id=>DATA.managers[id]).sort((a,b)=>DATA.overdue[b]-DATA.overdue[a]);
@@ -1638,26 +1823,42 @@ new Chart(document.getElementById("revenueChart"),{{
   }});
 }})();
 
-// Country distribution — horizontal bar (top-10 + others)
+// Country distribution — horizontal bar with source toggle
 (function(){{
-  if(!DATA.country_labels || !DATA.country_labels.length) return;
-  // Reverse so largest is at top (Chart.js renders bottom-to-top for indexAxis:'y')
-  const labels = DATA.country_labels.slice().reverse();
-  const values = DATA.country_values.slice().reverse();
-  const total  = DATA.country_values.reduce((a,b)=>a+b,0);
+  const srcData = {{
+    all:    {{labels: DATA.country_labels,        values: DATA.country_values}},
+    prereg: {{labels: DATA.country_labels_prereg, values: DATA.country_values_prereg}},
+    web:    {{labels: DATA.country_labels_web,    values: DATA.country_values_web}},
+  }};
+  const srcLabels = {{all:"Все источники", prereg:"Предзапись", web:"Вебинар"}};
+  let activeSrc = "all";
+
   const palette = [
     '#4f8ef7','#6ab04c','#f5a623','#a29bfe','#fd79a8','#00cec9',
     '#e17055','#fdcb6e','#74b9ff','#55efc4','#b2bec3','#636e72'
   ];
-  new Chart(document.getElementById('countryChart'), {{
+
+  const btnStyle = (a) =>
+    "padding:5px 12px;border-radius:5px;border:none;cursor:pointer;font-size:12px;font-weight:600;" +
+    (a ? "background:#4f8ef7;color:#fff;" : "background:#1e2a3a;color:#a0aec0;");
+
+  function buildData(src) {{
+    const lbs = (srcData[src].labels || []).slice().reverse();
+    const vls = (srcData[src].values || []).slice().reverse();
+    const tot = vls.reduce((a,b)=>a+b,0);
+    return {{lbs, vls, tot}};
+  }}
+
+  const init = buildData("all");
+  const chart = new Chart(document.getElementById('countryChart'), {{
     type: 'bar',
     plugins: [ChartDataLabels],
     data: {{
-      labels: labels,
+      labels: init.lbs,
       datasets: [{{
         label: 'Лидов',
-        data: values,
-        backgroundColor: labels.map((_,i) => palette[i % palette.length]),
+        data: init.vls,
+        backgroundColor: init.lbs.map((_,i) => palette[i % palette.length]),
         borderRadius: 4,
       }}]
     }},
@@ -1668,33 +1869,47 @@ new Chart(document.getElementById("revenueChart"),{{
         legend: {{display: false}},
         tooltip: {{callbacks: {{
           label: function(c) {{
-            return ' ' + c.raw + ' лидов (' + Math.round(c.raw/total*100) + '%)';
+            const tot = c.chart.data.datasets[0].data.reduce((a,b)=>a+b,0);
+            return ' ' + c.raw + ' лидов (' + Math.round(c.raw/tot*100) + '%)';
           }}
         }}}},
         datalabels: {{
-          anchor: 'end',
-          align: 'end',
-          color: '#e8eaf0',
+          anchor: 'end', align: 'end', color: '#e8eaf0',
           font: {{size: 11, weight: 'bold'}},
-          formatter: function(val) {{
-            return val + ' (' + Math.round(val/total*100) + '%)';
+          formatter: function(val, ctx) {{
+            const tot = ctx.chart.data.datasets[0].data.reduce((a,b)=>a+b,0);
+            return val + ' (' + Math.round(val/tot*100) + '%)';
           }}
         }}
       }},
       layout: {{padding: {{right: 90}}}},
       scales: {{
-        x: {{
-          beginAtZero: true,
-          ticks: {{color: '#e8eaf0'}},
-          grid: {{color: '#1e2a3a'}}
-        }},
-        y: {{
-          ticks: {{color: '#e8eaf0', font: {{size: 12}}}},
-          grid: {{color: '#1e2a3a'}}
-        }}
+        x: {{beginAtZero:true, ticks:{{color:'#e8eaf0'}}, grid:{{color:'#1e2a3a'}}}},
+        y: {{ticks:{{color:'#e8eaf0',font:{{size:12}}}}, grid:{{color:'#1e2a3a'}}}}
       }}
     }}
   }});
+
+  const btnWrap = document.getElementById("countrySourceBtns");
+  function renderCountryBtns() {{
+    btnWrap.innerHTML = "";
+    Object.keys(srcData).forEach(k => {{
+      const btn = document.createElement("button");
+      btn.textContent = srcLabels[k];
+      btn.style.cssText = btnStyle(k === activeSrc);
+      btn.onclick = function() {{
+        activeSrc = k;
+        const d = buildData(k);
+        chart.data.labels = d.lbs;
+        chart.data.datasets[0].data = d.vls;
+        chart.data.datasets[0].backgroundColor = d.lbs.map((_,i)=>palette[i%palette.length]);
+        chart.update();
+        renderCountryBtns();
+      }};
+      btnWrap.appendChild(btn);
+    }});
+  }}
+  renderCountryBtns();
 }})();
 
 // Country status 100% stacked horizontal bar with week filter
@@ -1841,6 +2056,37 @@ new Chart(document.getElementById("revenueChart"),{{
   renderBtns();
 }})();
 
+// Webinar funnel section
+(function(){{
+  const d = DATA;
+  const funnel = document.getElementById("webinarFunnel");
+  if(!funnel) return;
+
+  const preregActive = d.prereg_total - (d.prereg_converted||0) - (d.prereg_disqualified||0) - (d.prereg_real_lost||0);
+  const convPct = d.prereg_total ? Math.round((d.prereg_converted||0) / d.prereg_total * 100) : 0;
+  const webTotal = (d.web_order_total||0) + (d.web_prepay_total||0);
+  const salePct  = webTotal ? Math.round((d.web_total_sales||0) / webTotal * 100) : 0;
+
+  const cards = [
+    {{title:"Предзаписей всего",    value: d.prereg_total||0,         color:"#4f8ef7", hint:"Анкета перезаписи 06.2026"}},
+    {{title:"Активны сейчас",       value: preregActive > 0 ? preregActive : 0, color:"#00cec9", hint:"Ещё в воронке"}},
+    {{title:"Перешли в заказ",      value: d.prereg_converted||0,     color:"#6ab04c", hint:'Причина ЗНР "Оставил Заказ"'}},
+    {{title:"Конверсия → заказ",    value: convPct + "%",              color:"#a29bfe", hint:"% предзаписей, оформивших заказ на вебинаре"}},
+    {{title:"Заказов с вебинара",   value: d.web_order_total||0,       color:"#f5a623", hint:"Заказ веб 06.26"}},
+    {{title:"Предоплат",            value: d.web_prepay_total||0,      color:"#fd79a8", hint:"Предоплата веб 06.26"}},
+    {{title:"Продажи с вебинара",   value: d.web_total_sales||0,       color:"#6ab04c", hint:"Статус Продажа из заказов/предоплат"}},
+    {{title:"Конверсия → продажа",  value: salePct + "%",              color:"#fdcb6e", hint:"% заказов/предоплат, дошедших до продажи"}},
+  ];
+
+  funnel.innerHTML = cards.map(c =>
+    '<div class="chart-card" style="padding:16px 20px;min-width:150px">' +
+    '<div style="font-size:26px;font-weight:700;color:' + c.color + '">' + c.value + '</div>' +
+    '<div style="font-size:13px;color:#e8eaf0;margin-top:4px">' + c.title + '</div>' +
+    '<div style="font-size:11px;color:#636e72;margin-top:2px">' + c.hint + '</div>' +
+    '</div>'
+  ).join('');
+}})();
+
 // Closure reasons horizontal bar
 new Chart(document.getElementById("reasonChart"),{{
   type:"bar",
@@ -1913,8 +2159,10 @@ def generate_html(report):
         "sorted_statuses": report["sorted_statuses"],
         "group_counts":    report["group_counts"],
         "managers":        {str(k): v for k, v in report["managers"].items()},
-        "mgr_viz":         report["mgr_viz"],
-        "overdue":         report["overdue"],
+        "mgr_viz":          report["mgr_viz"],
+        "mgr_viz_prereg":   report["mgr_viz_prereg"],
+        "mgr_viz_web":      report["mgr_viz_web"],
+        "overdue":          report["overdue"],
         "daily_labels":    report["daily_labels"],
         "daily_values":    report["daily_values"],
         "capital_labels":  report["capital_labels"],
@@ -1928,8 +2176,12 @@ def generate_html(report):
         "conv_pct":        report["conv_pct"],
         "reason_labels":   report["reason_labels"],
         "reason_values":   report["reason_values"],
-        "country_labels":   report["country_labels"],
-        "country_values":   report["country_values"],
+        "country_labels":         report["country_labels"],
+        "country_values":         report["country_values"],
+        "country_labels_prereg":  report["country_labels_prereg"],
+        "country_values_prereg":  report["country_values_prereg"],
+        "country_labels_web":     report["country_labels_web"],
+        "country_values_web":     report["country_values_web"],
         "cstat_datasets":   report["cstat_datasets"],
         "cstat_by_week":    report["cstat_by_week"],
         "mgr_country_cols": report["mgr_country_cols"],
@@ -1942,8 +2194,15 @@ def generate_html(report):
         "mgr_sales_count":  report["mgr_sales_count"],
         "mgr_avg_price":    report["mgr_avg_price"],
         "mgr_conv":         report["mgr_conv"],
-        "cumulative_funnel": report["cumulative_funnel"],
-        "cohort_table":      report["cohort_table"],
+        "cumulative_funnel":  report["cumulative_funnel"],
+        "cohort_table":       report["cohort_table"],
+        "prereg_total":       report["prereg_total"],
+        "prereg_converted":   report["prereg_converted"],
+        "prereg_disqualified": report["prereg_disqualified"],
+        "prereg_real_lost":   report["prereg_real_lost"],
+        "web_order_total":    report["web_order_total"],
+        "web_prepay_total":   report["web_prepay_total"],
+        "web_total_sales":    report["web_total_sales"],
     }, ensure_ascii=False)
 
     active_total = sum(gc.get(g, 0) for g in ("incoming", "new_lead", "om", "in_work", "contact", "qualified"))
