@@ -612,14 +612,20 @@ def build_report():
 
     web_order_total  = len(leads_web_order)
     web_prepay_total = len(leads_web_prepay)
-    web_order_sales  = sum(
-        1 for l in leads_web_order
-        if statuses.get(l.get("status_id"), {}).get("group") == "sale"
-    )
-    web_prepay_sales = sum(
-        1 for l in leads_web_prepay
-        if statuses.get(l.get("status_id"), {}).get("group") == "sale"
-    )
+
+    def _sale_stats(lead_list):
+        cnt = 0; rev = 0
+        for l in lead_list:
+            if statuses.get(l.get("status_id"), {}).get("group") == "sale":
+                cnt += 1
+                rev += l.get("price") or 0
+        return cnt, rev
+
+    web_order_sale_count,   web_order_sale_revenue  = _sale_stats(leads_web_order)
+    web_prepay_sale_count,  web_prepay_sale_revenue = _sale_stats(leads_web_prepay)
+    prereg_sale_count,      prereg_sale_revenue     = _sale_stats(leads_prereg)
+    web_order_sales  = web_order_sale_count
+    web_prepay_sales = web_prepay_sale_count
     web_total_sales  = web_order_sales + web_prepay_sales
 
     print("Fetching overdue tasks…")
@@ -973,6 +979,10 @@ def build_report():
     # Overall avg ticket
     total_sales_count = sum(mgr_sales_cnt.values())
     avg_price = round(total_price / total_sales_count) if total_sales_count else 0
+    # Average check excluding web prepayments (5 000 ₽ skews the metric)
+    no_prepay_count   = total_sales_count - web_prepay_sale_count
+    no_prepay_revenue = total_price       - web_prepay_sale_revenue
+    avg_price_no_prepay = round(no_prepay_revenue / no_prepay_count) if no_prepay_count > 0 else 0
 
     # Per-manager conversion: Взято в работу → Продажи
     # Denominator uses same ATTR_FUNNEL logic as "Взято в работу" stage
@@ -1206,7 +1216,8 @@ def build_report():
         "revenue_values":   revenue_values,
         "mgr_sales_count":  mgr_sales_count,
         "mgr_avg_price":    mgr_avg_price,
-        "avg_price":        avg_price,
+        "avg_price":            avg_price,
+        "avg_price_no_prepay":  avg_price_no_prepay,
         "mgr_conv":         mgr_conv_data,
         "cumulative_funnel": cumulative_funnel,
         "cohort_table":         cohort_table,
@@ -1222,7 +1233,14 @@ def build_report():
         "prereg_real_lost":   prereg_real_lost,
         "web_order_total":    web_order_total,
         "web_prepay_total":   web_prepay_total,
-        "web_total_sales":    web_total_sales,
+        "web_total_sales":          web_total_sales,
+        "web_order_sale_count":    web_order_sale_count,
+        "web_order_sale_revenue":  web_order_sale_revenue,
+        "web_prepay_sale_count":   web_prepay_sale_count,
+        "web_prepay_sale_revenue": web_prepay_sale_revenue,
+        "prereg_sale_count":       prereg_sale_count,
+        "prereg_sale_revenue":     prereg_sale_revenue,
+        "avg_price_no_prepay":     avg_price_no_prepay,
     }
 
 # ── HTML ──────────────────────────────────────────────────────────────────────
@@ -1350,6 +1368,7 @@ function triggerRefresh() {{
   <div class="stat"><div class="stat-value" id="sv_conv">{conv_pct}%</div><div class="stat-label">Конверсия в продажу</div></div>
   <div class="stat" style="min-width:180px"><div class="stat-value" id="sv_revenue" style="font-size:20px">{price}</div><div class="stat-label">Сумма сделок, ₽</div></div>
   <div class="stat" style="min-width:180px"><div class="stat-value" id="sv_avg" style="font-size:20px">{avg_price}</div><div class="stat-label">Средний чек, ₽</div></div>
+  <div class="stat green" style="min-width:200px"><div class="stat-value" id="sv_avg_noprepay" style="font-size:20px">{avg_no_prepay}</div><div class="stat-label">Ср. чек без предоплат, ₽</div></div>
 </div>
 
 <h2>Лиды по дням (с 6 июня)</h2>
@@ -1430,8 +1449,21 @@ function triggerRefresh() {{
 </div>
 
 <h2>Воронка вебинара 06.26</h2>
-<div id="webinarFunnel" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:16px">
+<div id="webinarFunnel" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:24px">
+
   <!-- filled by JS -->
+</div>
+
+<h2>Структура продаж по источнику</h2>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:8px">
+  <div class="chart-card" style="height:240px">
+    <div style="font-size:12px;color:#8b8fa8;margin-bottom:8px">Количество продаж</div>
+    <canvas id="saleCountChart"></canvas>
+  </div>
+  <div class="chart-card" style="height:240px">
+    <div style="font-size:12px;color:#8b8fa8;margin-bottom:8px">Выручка, ₽</div>
+    <canvas id="saleRevenueChart"></canvas>
+  </div>
 </div>
 
 <h2>Причины закрытия сделок</h2>
@@ -2358,6 +2390,71 @@ new Chart(document.getElementById("dailyCapChart"),{{
 }})();
 
 // Closure reasons horizontal bar
+// Sale structure charts (count + revenue by source type)
+(function(){{
+  const cats   = ["Предзапись", "Заказ веб (полная оплата)", "Предоплата веб"];
+  const counts = [DATA.prereg_sale_count||0, DATA.web_order_sale_count||0, DATA.web_prepay_sale_count||0];
+  const revs   = [DATA.prereg_sale_revenue||0, DATA.web_order_sale_revenue||0, DATA.web_prepay_sale_revenue||0];
+  const colors = ["#4f8ef7", "#6ab04c", "#f5a623"];
+
+  new Chart(document.getElementById("saleCountChart"),{{
+    type:"bar",
+    data:{{
+      labels: cats,
+      datasets:[{{
+        label:"Продаж",
+        data: counts,
+        backgroundColor: colors,
+        borderRadius: 4,
+      }}]
+    }},
+    options:{{
+      maintainAspectRatio:false,
+      plugins:{{
+        legend:{{display:false}},
+        tooltip:{{callbacks:{{label:function(c){{
+          const total = counts.reduce((a,b)=>a+b,0);
+          return ` ${{c.raw}} (${{total?Math.round(c.raw/total*100):0}}%)`;
+        }}}}}}
+      }},
+      scales:{{
+        x:{{ticks:{{color:"#e8eaf0",font:{{size:11}}}},grid:{{color:"#1e2a3a"}}}},
+        y:{{beginAtZero:true,ticks:{{color:"#e8eaf0",stepSize:1}},grid:{{color:"#1e2a3a"}}}}
+      }}
+    }}
+  }});
+
+  new Chart(document.getElementById("saleRevenueChart"),{{
+    type:"bar",
+    data:{{
+      labels: cats,
+      datasets:[{{
+        label:"Выручка, ₽",
+        data: revs,
+        backgroundColor: colors,
+        borderRadius: 4,
+      }}]
+    }},
+    options:{{
+      maintainAspectRatio:false,
+      plugins:{{
+        legend:{{display:false}},
+        tooltip:{{callbacks:{{label:function(c){{
+          return ` ${{c.raw.toLocaleString("ru-RU")}} ₽`;
+        }}}}}}
+      }},
+      scales:{{
+        x:{{ticks:{{color:"#e8eaf0",font:{{size:11}}}},grid:{{color:"#1e2a3a"}}}},
+        y:{{
+          beginAtZero:true,
+          ticks:{{color:"#e8eaf0",callback:v=>v.toLocaleString("ru-RU")+" ₽"}},
+          grid:{{color:"#1e2a3a"}}
+        }}
+      }}
+    }}
+  }});
+}})();
+
 // Closure reasons chart — global toggle
 (function(){{
   const srcR = {{
@@ -2471,7 +2568,17 @@ new Chart(document.getElementById("dailyCapChart"),{{
     document.getElementById("sv_sale").textContent     = numFmt(d.sale_cnt);
     document.getElementById("sv_conv").textContent     = (d.conv_pct||0).toFixed(2)+"%";
     document.getElementById("sv_revenue").textContent  = numFmt(d.revenue)+" ₽";
-    document.getElementById("sv_avg").textContent      = numFmt(d.avg_price)+" ₽";
+    document.getElementById("sv_avg").textContent         = numFmt(d.avg_price)+" ₽";
+    // avg_price_no_prepay is a global metric — only meaningful for "all" mode; hide for filtered views
+    const noPreEl = document.getElementById("sv_avg_noprepay");
+    if(noPreEl) {{
+      if(src === "all") {{
+        noPreEl.textContent = numFmt(DATA.avg_price_no_prepay)+" ₽";
+        noPreEl.closest('.stat').style.opacity = "1";
+      }} else {{
+        noPreEl.closest('.stat').style.opacity = "0.35";
+      }}
+    }}
   }}
   window.SRC_UPDATERS.push(function(src) {{
     applyStats(srcStats[src] || srcStats.all);
@@ -2487,8 +2594,9 @@ def generate_html(report):
     sales = gc.get("sale", 0)
     total = report["total"]
     conv_pct = round(sales / total * 100, 2) if total else 0
-    price_fmt     = f"{report['total_price']:,}".replace(",", "\u00a0")
-    avg_price_fmt = f"{report['avg_price']:,}".replace(",", "\u00a0")
+    price_fmt          = f"{report['total_price']:,}".replace(",", "\u00a0")
+    avg_price_fmt      = f"{report['avg_price']:,}".replace(",", "\u00a0")
+    avg_no_prepay_fmt  = f"{report['avg_price_no_prepay']:,}".replace(",", "\u00a0")
 
     json_data = json.dumps({
         "sorted_statuses": report["sorted_statuses"],
@@ -2556,7 +2664,14 @@ def generate_html(report):
         "prereg_real_lost":   report["prereg_real_lost"],
         "web_order_total":    report["web_order_total"],
         "web_prepay_total":   report["web_prepay_total"],
-        "web_total_sales":    report["web_total_sales"],
+        "web_total_sales":          report["web_total_sales"],
+        "web_order_sale_count":    report["web_order_sale_count"],
+        "web_order_sale_revenue":  report["web_order_sale_revenue"],
+        "web_prepay_sale_count":   report["web_prepay_sale_count"],
+        "web_prepay_sale_revenue": report["web_prepay_sale_revenue"],
+        "prereg_sale_count":       report["prereg_sale_count"],
+        "prereg_sale_revenue":     report["prereg_sale_revenue"],
+        "avg_price_no_prepay":     report["avg_price_no_prepay"],
     }, ensure_ascii=False)
 
     active_total = sum(gc.get(g, 0) for g in ("incoming", "new_lead", "om", "in_work", "contact", "qualified"))
@@ -2572,8 +2687,9 @@ def generate_html(report):
         invoiced   = gc.get("invoiced", 0),
         sales      = sales,
         conv_pct   = conv_pct,
-        price      = price_fmt,
-        avg_price  = avg_price_fmt,
+        price           = price_fmt,
+        avg_price       = avg_price_fmt,
+        avg_no_prepay   = avg_no_prepay_fmt,
         json_data  = json_data,
     )
 
