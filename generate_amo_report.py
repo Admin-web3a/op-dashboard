@@ -1975,7 +1975,9 @@ new Chart(document.getElementById("dailyCapChart"),{{
   // Manager conversion chart
   const convChart = (function(){{
     const conv = DATA.mgr_conv;
-    const ids = Object.keys(conv).filter(id=>DATA.managers[id]&&conv[id].inwork>0).sort((a,b)=>conv[b].pct-conv[a].pct);
+    // Exclude fired manager whose leads were redistributed (inflates conversion)
+    const CONV_EXCL = new Set(Object.keys(DATA.managers).filter(id=>DATA.managers[id]==="Виолетта Осадчук"));
+    const ids = Object.keys(conv).filter(id=>DATA.managers[id]&&conv[id].inwork>0&&!CONV_EXCL.has(id)).sort((a,b)=>conv[b].pct-conv[a].pct);
     if(!ids.length) return null;
     return new Chart(document.getElementById('mgrConvChart'),{{
       type:'bar',
@@ -2041,7 +2043,8 @@ new Chart(document.getElementById("dailyCapChart"),{{
     // Conversion
     if(convChart) {{
       const conv = d.conv||{{}};
-      const ids = Object.keys(conv).filter(id=>DATA.managers[id]&&(conv[id]?.inwork||0)>0).sort((a,b)=>(conv[b]?.pct||0)-(conv[a]?.pct||0));
+      const CONV_EXCL2 = new Set(Object.keys(DATA.managers).filter(id=>DATA.managers[id]==="Виолетта Осадчук"));
+      const ids = Object.keys(conv).filter(id=>DATA.managers[id]&&(conv[id]?.inwork||0)>0&&!CONV_EXCL2.has(id)).sort((a,b)=>(conv[b]?.pct||0)-(conv[a]?.pct||0));
       convChart.data.labels = ids.map(id=>DATA.managers[id]);
       convChart.data.datasets[0].data = ids.map(id=>(conv[id]?.pct||0));
       convChart.data.datasets[0].backgroundColor = ids.map(id=>{{const p=conv[id]?.pct||0;return p>=5?'#6ab04c':p>=2?'#f5a623':'#eb4d4b';}});
@@ -2606,6 +2609,7 @@ def generate_html(report):
         "avg_price_all":   report["avg_price"],
         "managers":        {str(k): v for k, v in report["managers"].items()},
         "mgr_viz":          report["mgr_viz"],
+        "mgr_detail":       report["mgr_detail"],
         "mgr_viz_prereg":   report["mgr_viz_prereg"],
         "mgr_viz_web":      report["mgr_viz_web"],
         "overdue":          report["overdue"],
