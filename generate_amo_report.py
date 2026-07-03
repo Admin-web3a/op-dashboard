@@ -33,22 +33,6 @@ INVALID_REASONS = {
     "уже покупал Инфинити", "уже покупал ментор",
 }
 
-# «Все источники» — поле будет разрешено по имени программно
-ALL_SOURCES_FIELD_NAME = "Все источники"
-# Значения «Все источники», соответствующие нашему запуску 06.26
-ALL_SOURCES_LAUNCH_VALUES = {
-    "Предзапись 06.26",
-    "Орбита",
-    "Канал запуска 06.26",
-    "Заказ веб 06.26",
-    "Предоплата веб 06.26",
-    "Был на вебе 06.26",
-    "Бонусы 06.26",
-    "Был на повторе 06.26",
-    "Был на прожарке 06.26",
-    "Кит",
-}
-
 MANAGERS = {
     12377210: "Никита Саламатин",
     11176694: "Наталья",
@@ -182,88 +166,6 @@ def resolve_source_enum_ids():
     except Exception as e:
         print(f"  Warning: could not resolve source enums: {e}")
     return result
-
-
-def resolve_all_sources_field_id():
-    """Find field_id for 'Все источники' custom field by name."""
-    try:
-        page = 1
-        while True:
-            data = api_get(f"leads/custom_fields?limit=50&page={page}")
-            fields = data.get("_embedded", {}).get("custom_fields", [])
-            if not fields:
-                break
-            for f in fields:
-                if f.get("name") == ALL_SOURCES_FIELD_NAME:
-                    fid = f["id"]
-                    print(f"  Resolved '{ALL_SOURCES_FIELD_NAME}' field_id → {fid}")
-                    return fid
-            page += 1
-    except Exception as e:
-        print(f"  Warning: could not resolve '{ALL_SOURCES_FIELD_NAME}' field_id: {e}")
-    return None
-
-
-def fetch_extra_sales(statuses, known_lead_ids, all_sources_field_id):
-    """Fetch sale leads NOT in known_lead_ids but with matching 'Все источники'.
-    Uses pipeline 9826550 (Основная воронка ОП) + created_at from June 2026
-    to avoid scanning millions of historical records.
-    Returns list of leads tagged with _source='extra_sale'."""
-    if not all_sources_field_id:
-        print("  Skipping extra sales fetch: field_id not resolved")
-        return []
-
-    OP_PIPELINE_ID = 9826550
-    # All sale status IDs — pipeline filter applied per-lead in the loop
-    sale_status_id_set = {sid for sid, info in statuses.items() if info.get("group") == "sale"}
-    if not sale_status_id_set:
-        return []
-
-    extra = []
-    seen = set(known_lead_ids)
-    # Scan leads created from June 1 2026, restrict to OP pipeline
-    CAMPAIGN_START = 1748736000  # 2026-06-01
-    MAX_PAGES = 20  # safety cap
-
-    page = 1
-    while page <= MAX_PAGES:
-        # Literal brackets — same syntax that works in fetch_filtered_leads
-        path = (f"leads?limit=250&page={page}"
-                f"&filter[created_at][from]={CAMPAIGN_START}"
-                f"&order[created_at]=desc")
-        try:
-            data = api_get(path)
-        except Exception as e:
-            print(f"  Warning: extra sales fetch error: {e}")
-            break
-        batch = data.get("_embedded", {}).get("leads", [])
-        if not batch:
-            break
-        for lead in batch:
-            lid = lead.get("id")
-            if not lid or lid in seen:
-                continue
-            # Must be in the OP pipeline
-            if lead.get("pipeline_id") != OP_PIPELINE_ID:
-                continue
-            # Must be in sale status
-            if lead.get("status_id") not in sale_status_id_set:
-                continue
-            # Must have matching 'Все источники' value
-            for cf in (lead.get("custom_fields_values") or []):
-                if cf.get("field_id") == all_sources_field_id:
-                    vals = {v.get("value") for v in (cf.get("values") or [])}
-                    if vals & ALL_SOURCES_LAUNCH_VALUES:
-                        lead["_source"] = "extra_sale"
-                        extra.append(lead)
-                        seen.add(lid)
-                    break
-        if len(batch) < 250:
-            break
-        page += 1
-
-    print(f"  Extra sale leads found: {len(extra)}")
-    return extra
 
 
 def fetch_pipelines():
@@ -637,7 +539,7 @@ def build_report():
     total = len(leads)
     total_price = sum(l.get("price") or 0 for l in leads)
 
-    # Counts by fine-grained group (extra_sales added to "sale" after fetching)
+    # Counts by fine-grained group
     group_counts = Counter()
     status_counts = Counter()
     for lead in leads:
@@ -645,24 +547,12 @@ def build_report():
         status_counts[sid] += 1
         group = statuses.get(sid, {}).get("group", "active")
         group_counts[group] += 1
-    # extra_sales are merged into group_counts["sale"] after fetch_extra_sales() runs
 
     # Split leads by source type
     leads_prereg     = [l for l in leads if l.get("_source") == "prereg"]
     leads_web_order  = [l for l in leads if l.get("_source") == "web_order"]
     leads_web_prepay = [l for l in leads if l.get("_source") == "web_prepay"]
     leads_web        = leads_web_order + leads_web_prepay
-
-    # Extra sale leads: in sale statuses + matching 'Все источники', but different 'Рабочий источник'
-    print("Resolving 'Все источники' field…")
-    all_sources_field_id = resolve_all_sources_field_id()
-    known_ids = {l["id"] for l in leads if l.get("id")}
-    print("Fetching extra sale leads…")
-    extra_sales = fetch_extra_sales(statuses, known_ids, all_sources_field_id)
-    extra_sale_count   = len(extra_sales)
-    extra_sale_revenue = sum(l.get("price") or 0 for l in extra_sales)
-    # Patch group_counts so stat card "Продажи" reflects extra sales
-    group_counts["sale"] += extra_sale_count
 
     # Helper: compute mgr_viz for any lead subset
     def _mgr_viz(subset):
@@ -1086,13 +976,12 @@ def build_report():
         for uid in MANAGERS
     }
 
-    # Overall avg ticket — includes extra_sales (same source filter expansion)
-    total_sales_count = sum(mgr_sales_cnt.values()) + extra_sale_count
-    total_price_sales = total_price + extra_sale_revenue   # for avg calc only
-    avg_price = round(total_price_sales / total_sales_count) if total_sales_count else 0
+    # Overall avg ticket
+    total_sales_count = sum(mgr_sales_cnt.values())
+    avg_price = round(total_price / total_sales_count) if total_sales_count else 0
     # Average check excluding web prepayments (5 000 ₽ skews the metric)
     no_prepay_count   = total_sales_count - web_prepay_sale_count
-    no_prepay_revenue = total_price_sales - web_prepay_sale_revenue
+    no_prepay_revenue = total_price       - web_prepay_sale_revenue
     avg_price_no_prepay = round(no_prepay_revenue / no_prepay_count) if no_prepay_count > 0 else 0
 
     # Per-manager conversion: Взято в работу → Продажи
@@ -1351,8 +1240,6 @@ def build_report():
         "web_prepay_sale_revenue": web_prepay_sale_revenue,
         "prereg_sale_count":       prereg_sale_count,
         "prereg_sale_revenue":     prereg_sale_revenue,
-        "extra_sale_count":        extra_sale_count,
-        "extra_sale_revenue":      extra_sale_revenue,
         "avg_price_no_prepay":     avg_price_no_prepay,
     }
 
@@ -2508,10 +2395,10 @@ new Chart(document.getElementById("dailyCapChart"),{{
 // Closure reasons horizontal bar
 // Sale structure charts (count + revenue by source type)
 (function(){{
-  const cats   = ["Предзапись", "Заказ веб (полная оплата)", "Предоплата веб", "Другие источники"];
-  const counts = [DATA.prereg_sale_count||0, DATA.web_order_sale_count||0, DATA.web_prepay_sale_count||0, DATA.extra_sale_count||0];
-  const revs   = [DATA.prereg_sale_revenue||0, DATA.web_order_sale_revenue||0, DATA.web_prepay_sale_revenue||0, DATA.extra_sale_revenue||0];
-  const colors = ["#4f8ef7", "#6ab04c", "#f5a623", "#a29bfe"];
+  const cats   = ["Предзапись", "Заказ веб (полная оплата)", "Предоплата веб"];
+  const counts = [DATA.prereg_sale_count||0, DATA.web_order_sale_count||0, DATA.web_prepay_sale_count||0];
+  const revs   = [DATA.prereg_sale_revenue||0, DATA.web_order_sale_revenue||0, DATA.web_prepay_sale_revenue||0];
+  const colors = ["#4f8ef7", "#6ab04c", "#f5a623"];
 
   new Chart(document.getElementById("saleCountChart"),{{
     type:"bar",
@@ -2788,8 +2675,6 @@ def generate_html(report):
         "web_prepay_sale_revenue": report["web_prepay_sale_revenue"],
         "prereg_sale_count":       report["prereg_sale_count"],
         "prereg_sale_revenue":     report["prereg_sale_revenue"],
-        "extra_sale_count":        report["extra_sale_count"],
-        "extra_sale_revenue":      report["extra_sale_revenue"],
         "avg_price_no_prepay":     report["avg_price_no_prepay"],
     }, ensure_ascii=False)
 
