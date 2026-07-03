@@ -213,16 +213,15 @@ def fetch_extra_sales(statuses, known_lead_ids, all_sources_field_id):
         print("  Skipping extra sales fetch: field_id not resolved")
         return []
 
-    sale_status_id_set = {
-        sid for sid, info in statuses.items()
-        if info.get("group") == "sale"
-    }
+    OP_PIPELINE_ID = 9826550
+    # All sale status IDs — pipeline filter applied per-lead in the loop
+    sale_status_id_set = {sid for sid, info in statuses.items() if info.get("group") == "sale"}
     if not sale_status_id_set:
         return []
 
     extra = []
     seen = set(known_lead_ids)
-    # Scan all leads created from June 1 2026 across all pipelines
+    # Scan leads created from June 1 2026, restrict to OP pipeline
     CAMPAIGN_START = 1748736000  # 2026-06-01
     MAX_PAGES = 20  # safety cap
 
@@ -243,6 +242,9 @@ def fetch_extra_sales(statuses, known_lead_ids, all_sources_field_id):
         for lead in batch:
             lid = lead.get("id")
             if not lid or lid in seen:
+                continue
+            # Must be in the OP pipeline
+            if lead.get("pipeline_id") != OP_PIPELINE_ID:
                 continue
             # Must be in sale status
             if lead.get("status_id") not in sale_status_id_set:
