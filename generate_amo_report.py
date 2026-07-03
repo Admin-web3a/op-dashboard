@@ -205,13 +205,16 @@ def resolve_all_sources_field_id():
 
 
 def fetch_extra_sales(statuses, known_lead_ids, all_sources_field_id):
-    """Fetch leads in sale statuses that are NOT in known_lead_ids
-    but have a matching value in 'Все источники' field.
+    """Fetch sale leads NOT in known_lead_ids but with matching 'Все источники'.
+    Uses pipeline 9826550 (Основная воронка ОП) + created_at from June 2026
+    to avoid scanning millions of historical records.
     Returns list of leads tagged with _source='extra_sale'."""
     if not all_sources_field_id:
         print("  Skipping extra sales fetch: field_id not resolved")
         return []
 
+    # Only look in the main OP pipeline to avoid cross-pipeline pollution
+    OP_PIPELINE_ID = 9826550
     sale_status_ids = [
         sid for sid, info in statuses.items()
         if info.get("group") == "sale"
@@ -221,14 +224,17 @@ def fetch_extra_sales(statuses, known_lead_ids, all_sources_field_id):
 
     extra = []
     seen = set(known_lead_ids)
+    # Only consider leads created from June 1 2026 (webinar campaign start)
+    CAMPAIGN_START = 1748736000  # 2026-06-01
+    MAX_PAGES = 10  # safety cap — there should be <10 pages of recent sales
 
-    # Fetch all leads in sale statuses (usually just tens of records)
     for sid in sale_status_ids:
         page = 1
-        while True:
+        while page <= MAX_PAGES:
             path = (f"leads?limit=250&page={page}"
-                    f"&filter[status_id]={sid}"
-                    f"&filter[updated_at][from]={UPDATED_FROM}")
+                    f"&filter%5Bstatus%5D%5B0%5D%5Bpipeline_id%5D={OP_PIPELINE_ID}"
+                    f"&filter%5Bstatus%5D%5B0%5D%5Bstatus_id%5D={sid}"
+                    f"&filter%5Bcreated_at%5D%5Bfrom%5D={CAMPAIGN_START}")
             try:
                 data = api_get(path)
             except Exception as e:
@@ -241,7 +247,6 @@ def fetch_extra_sales(statuses, known_lead_ids, all_sources_field_id):
                 lid = lead.get("id")
                 if not lid or lid in seen:
                     continue
-                # Check 'Все источники' field
                 for cf in (lead.get("custom_fields_values") or []):
                     if cf.get("field_id") == all_sources_field_id:
                         vals = {v.get("value") for v in (cf.get("values") or [])}
