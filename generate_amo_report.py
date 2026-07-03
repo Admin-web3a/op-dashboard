@@ -213,51 +213,52 @@ def fetch_extra_sales(statuses, known_lead_ids, all_sources_field_id):
         print("  Skipping extra sales fetch: field_id not resolved")
         return []
 
-    # Only look in the main OP pipeline to avoid cross-pipeline pollution
-    OP_PIPELINE_ID = 9826550
-    sale_status_ids = [
+    sale_status_id_set = {
         sid for sid, info in statuses.items()
         if info.get("group") == "sale"
-    ]
-    if not sale_status_ids:
+    }
+    if not sale_status_id_set:
         return []
 
     extra = []
     seen = set(known_lead_ids)
-    # Only consider leads created from June 1 2026 (webinar campaign start)
+    # Scan all leads created from June 1 2026 across all pipelines
     CAMPAIGN_START = 1748736000  # 2026-06-01
-    MAX_PAGES = 10  # safety cap — there should be <10 pages of recent sales
+    MAX_PAGES = 20  # safety cap
 
-    for sid in sale_status_ids:
-        page = 1
-        while page <= MAX_PAGES:
-            path = (f"leads?limit=250&page={page}"
-                    f"&filter%5Bstatus%5D%5B0%5D%5Bpipeline_id%5D={OP_PIPELINE_ID}"
-                    f"&filter%5Bstatus%5D%5B0%5D%5Bstatus_id%5D={sid}"
-                    f"&filter%5Bcreated_at%5D%5Bfrom%5D={CAMPAIGN_START}")
-            try:
-                data = api_get(path)
-            except Exception as e:
-                print(f"  Warning: extra sales fetch error: {e}")
-                break
-            batch = data.get("_embedded", {}).get("leads", [])
-            if not batch:
-                break
-            for lead in batch:
-                lid = lead.get("id")
-                if not lid or lid in seen:
-                    continue
-                for cf in (lead.get("custom_fields_values") or []):
-                    if cf.get("field_id") == all_sources_field_id:
-                        vals = {v.get("value") for v in (cf.get("values") or [])}
-                        if vals & ALL_SOURCES_LAUNCH_VALUES:
-                            lead["_source"] = "extra_sale"
-                            extra.append(lead)
-                            seen.add(lid)
-                        break
-            if len(batch) < 250:
-                break
-            page += 1
+    page = 1
+    while page <= MAX_PAGES:
+        # Literal brackets — same syntax that works in fetch_filtered_leads
+        path = (f"leads?limit=250&page={page}"
+                f"&filter[created_at][from]={CAMPAIGN_START}"
+                f"&order[created_at]=desc")
+        try:
+            data = api_get(path)
+        except Exception as e:
+            print(f"  Warning: extra sales fetch error: {e}")
+            break
+        batch = data.get("_embedded", {}).get("leads", [])
+        if not batch:
+            break
+        for lead in batch:
+            lid = lead.get("id")
+            if not lid or lid in seen:
+                continue
+            # Must be in sale status
+            if lead.get("status_id") not in sale_status_id_set:
+                continue
+            # Must have matching 'Все источники' value
+            for cf in (lead.get("custom_fields_values") or []):
+                if cf.get("field_id") == all_sources_field_id:
+                    vals = {v.get("value") for v in (cf.get("values") or [])}
+                    if vals & ALL_SOURCES_LAUNCH_VALUES:
+                        lead["_source"] = "extra_sale"
+                        extra.append(lead)
+                        seen.add(lid)
+                    break
+        if len(batch) < 250:
+            break
+        page += 1
 
     print(f"  Extra sale leads found: {len(extra)}")
     return extra

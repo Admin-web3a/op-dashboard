@@ -6,6 +6,11 @@ on:
     - cron: "0 6 * * *"   # 09:00 МСК (резерв)
   workflow_dispatch:
 
+# Предотвращаем параллельные запуски — второй run отменяет первый
+concurrency:
+  group: dashboard-update
+  cancel-in-progress: true
+
 permissions:
   contents: write
 
@@ -26,6 +31,8 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add docs/index.html
-          git diff --cached --quiet || git commit -m "chore: update dashboard $(date +'%Y-%m-%d %H:%M UTC')"
-          git pull --rebase origin main
-          git push
+          git diff --cached --quiet && exit 0
+          git commit -m "chore: update dashboard $(date +'%Y-%m-%d %H:%M UTC')"
+          git pull --rebase origin main \
+            || { git checkout --ours docs/index.html; git add docs/index.html; git rebase --continue; }
+          git push origin main
