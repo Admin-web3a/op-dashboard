@@ -18,8 +18,9 @@ DOMAIN = "simmihur.amocrm.ru"
 
 SOURCE_FIELD_ID       = 1321741
 SOURCE_PREREG_ID      = 953633       # Анкета перезаписи 06.2026 (known enum ID)
-SOURCE_WEB_ORDER_NAME = "Заказ веб 06.26"      # будет разрешён по имени
-SOURCE_WEB_PREPAY_NAME= "Предоплата веб 06.26" # будет разрешён по имени
+SOURCE_WEB_ORDER_NAME   = "Заказ веб 06.26"           # будет разрешён по имени
+SOURCE_WEB_PREPAY_NAME  = "Предоплата веб 06.26"        # будет разрешён по имени
+SOURCE_WEB_PRESENT_NAME = "Присутствовал на вебе 06.26" # будет разрешён по имени
 UPDATED_FROM          = 1743465600   # 2026-04-01
 
 REASON_FIELD_ID = 180637
@@ -154,8 +155,9 @@ def resolve_source_enum_ids():
             enums = data.get("values", [])
         name_map = {e.get("value", e.get("enum", "")): e["id"] for e in enums}
         for name, src_type in [
-            (SOURCE_WEB_ORDER_NAME,  "web_order"),
-            (SOURCE_WEB_PREPAY_NAME, "web_prepay"),
+            (SOURCE_WEB_ORDER_NAME,   "web_order"),
+            (SOURCE_WEB_PREPAY_NAME,  "web_prepay"),
+            (SOURCE_WEB_PRESENT_NAME, "web_present"),
         ]:
             eid = name_map.get(name)
             if eid:
@@ -550,7 +552,7 @@ def build_report():
 
     # Split leads by source type
     leads_prereg     = [l for l in leads if l.get("_source") == "prereg"]
-    leads_web_order  = [l for l in leads if l.get("_source") == "web_order"]
+    leads_web_order  = [l for l in leads if l.get("_source") in ("web_order", "web_present")]
     leads_web_prepay = [l for l in leads if l.get("_source") == "web_prepay"]
     leads_web        = leads_web_order + leads_web_prepay
 
