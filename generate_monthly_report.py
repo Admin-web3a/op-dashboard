@@ -505,16 +505,17 @@ function triggerRefresh() {
   <div class="chart-wrap"><canvas id="overdueChart" height="80"></canvas></div>
 </div>
 
-<!-- ── Funnel + Cohort ── -->
-<div class="row2">
-  <div class="section">
-    <h2>Кумулятивная воронка</h2>
-    <div class="chart-wrap"><canvas id="funnelChart" height="200"></canvas></div>
-  </div>
-  <div class="section">
-    <h2>Когортная таблица конверсий по неделям</h2>
-    <div class="cohort-wrap" id="cohortTableWrap"></div>
-  </div>
+<!-- ── Funnel ── -->
+<div class="section">
+  <h2>Кумулятивная воронка</h2>
+  <div class="chart-wrap"><canvas id="funnelChart" height="90"></canvas></div>
+</div>
+
+<!-- ── Cohort ── -->
+<div class="section">
+  <h2>Конверсия по неделям (когортный анализ)</h2>
+  <p style="color:var(--muted);font-size:12px;margin:-10px 0 14px">Лиды сгруппированы по дате создания (неделя пн–вс). * — незрелые когорты (&lt;14 дней), конверсия занижена.</p>
+  <div id="cohortTableWrap"></div>
 </div>
 
 <!-- ── Conversion week chart ── -->
@@ -917,66 +918,107 @@ function renderFunnelChart(leads) {
   });
 }
 
-// ── Cohort table ─────────────────────────────────────────────────────────────
+// ── Cohort table (rich: stages as rows, weeks as cols + progress bars) ───────
+
+const AF_STAGES = [
+  {label:"Новый лид",          grps:new Set(["incoming","new_lead","om","in_work","contact","qualified","offer","delayed","invoiced","sale","ndz","lost"])},
+  {label:"Взято в работу",     grps:new Set(["in_work","contact","qualified","offer","delayed","invoiced","sale","ndz","lost"])},
+  {label:"Контакт установлен", grps:new Set(["contact","qualified","offer","invoiced","sale"])},
+  {label:"Квалифицирован",     grps:new Set(["qualified","offer","invoiced","sale"])},
+  {label:"Оффер озвучен",      grps:new Set(["offer","invoiced","sale"])},
+  {label:"Выставлен счет",     grps:new Set(["invoiced","sale"])},
+  {label:"Продажи",            grps:new Set(["sale"])},
+];
 
 function renderCohortTable(leads) {
-  const groups = {};
-  const now = Date.now()/1000;
   const MATURE_DAYS = 14;
+  const nowTs = Date.now() / 1000;
 
+  // Always group by creation date regardless of filter mode
+  const weekMap = {};
   for (const l of leads) {
-    const ts = l.c;
-    if (!ts) continue;
-    const d = new Date(ts*1000);
-    const mon = mondayOf(d);
+    if (!l.c) continue;
+    const mon = mondayOf(new Date(l.c * 1000));
     const key = dateStr(mon);
-    if (!groups[key]) groups[key] = [];
-    groups[key].push(l);
+    if (!weekMap[key]) weekMap[key] = [];
+    weekMap[key].push(l);
   }
 
-  const weeks = Object.keys(groups).sort();
-  if (!weeks.length) { document.getElementById('cohortTableWrap').innerHTML='<p style="color:#555;font-size:12px">Нет данных</p>'; return; }
-
-  const stagePos = {new_lead:1,in_work:2,contact:3,qualified:4,offer:5,invoiced:6,sale:7};
-
-  let html = '<table class="cohort-table"><thead><tr><th>Неделя</th><th>Лидов</th>';
-  STAGE_LABELS_COHORT.forEach(s => { html += `<th>${s}</th>`; });
-  html += '</tr></thead><tbody>';
-
-  const totals = Array(STAGE_GRPS_FOR_COHORT.length).fill(0);
-  let totalLeads = 0;
-
-  for (const wk of weeks) {
-    const wLeads = groups[wk];
-    const n = wLeads.length;
-    totalLeads += n;
-    const d = new Date(wk+'T00:00:00Z');
-    const endD = addDays(d,6);
-    const fmtD = (x) => x.getUTCDate().toString().padStart(2,'0')+'.'+(x.getUTCMonth()+1).toString().padStart(2,'0');
-    const wLabel = fmtD(d)+'–'+fmtD(endD);
-    const immature = (now - d.getTime()/1000) < MATURE_DAYS*86400;
-
-    html += `<tr><td>${wLabel}</td><td>${n}</td>`;
-    STAGE_GRPS_FOR_COHORT.forEach((sg,i) => {
-      const minPos = stagePos[sg]||0;
-      const cnt = wLeads.filter(l => (FUNNEL_POS[grpOf(l)]||0) >= minPos).length;
-      totals[i] += cnt;
-      const pct = n>0 ? Math.round(cnt/n*100) : 0;
-      const heatIdx = Math.min(5, Math.floor(pct/20));
-      const cls = immature ? 'immature' : `heat-${heatIdx}`;
-      html += `<td class="${cls}">${immature ? `${pct}%*` : `${pct}%`}</td>`;
-    });
-    html += '</tr>';
+  const weekKeys = Object.keys(weekMap).sort();
+  if (!weekKeys.length) {
+    document.getElementById('cohortTableWrap').innerHTML = '<p style="color:#555;font-size:12px">Нет данных</p>';
+    return;
   }
 
-  // Totals row
-  html += `<tr style="font-weight:600;background:#252836"><td>Итого</td><td>${totalLeads}</td>`;
-  STAGE_GRPS_FOR_COHORT.forEach((sg,i) => {
-    const pct = totalLeads>0 ? Math.round(totals[i]/totalLeads*100) : 0;
-    html += `<td>${pct}%</td>`;
+  const fmtD = x => x.getUTCDate().toString().padStart(2,'0') + '.' + (x.getUTCMonth()+1).toString().padStart(2,'0');
+  const weeks = weekKeys.map(k => {
+    const d = new Date(k + 'T00:00:00Z');
+    return {
+      key: k,
+      label: fmtD(d) + '–' + fmtD(addDays(d, 6)),
+      immature: (nowTs - d.getTime()/1000) < MATURE_DAYS * 86400,
+      ls: weekMap[k],
+    };
   });
-  html += '</tr></tbody></table>';
-  html += '<div style="font-size:11px;color:#555;margin-top:6px">* — неделя ещё не достигла 14 дней зрелости</div>';
+
+  // counts[wi][si] = leads in week wi at stage si or deeper
+  const counts = weeks.map(w =>
+    AF_STAGES.map(st => w.ls.filter(l => st.grps.has(grpOf(l))).length)
+  );
+  // totals[si] = total across all leads
+  const totals = AF_STAGES.map(st => leads.filter(l => st.grps.has(grpOf(l))).length);
+
+  function convColor(pct) {
+    if (pct >= 70) return '#6ab04c';
+    if (pct >= 40) return '#f5a623';
+    return '#eb4d4b';
+  }
+  function barCell(cnt, prev, immature, extraStyle) {
+    const pct = prev > 0 ? Math.round(cnt / prev * 100) : 0;
+    const col = convColor(pct);
+    const op  = immature ? 'opacity:0.55;' : '';
+    return '<td style="padding:6px 12px;' + op + (extraStyle||'') + '">'
+      + '<div style="display:flex;align-items:center;gap:7px">'
+      + '<div style="width:54px;height:7px;background:#2a2d3a;border-radius:3px;flex-shrink:0">'
+      + '<div style="width:' + Math.min(100,pct) + '%;height:100%;background:' + col + ';border-radius:3px"></div>'
+      + '</div>'
+      + '<span style="font-size:12px;color:' + col + ';font-weight:600">' + pct + '%' + (immature?'*':'') + '</span>'
+      + '</div></td>';
+  }
+
+  const TH = 'background:#22253a;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.04em;padding:10px 14px;';
+  let html = '<div style="overflow-x:auto"><table style="border-collapse:collapse;width:100%;min-width:600px;font-size:13px">'
+    + '<thead><tr><th style="' + TH + 'text-align:left;min-width:180px">Этап / Конверсия</th>';
+  weeks.forEach(w => {
+    html += '<th style="' + TH + 'text-align:center;' + (w.immature?'opacity:0.6':'') + '">'
+      + w.label + (w.immature?' *':'') + '</th>';
+  });
+  html += '<th style="' + TH + 'text-align:center;background:#1a2e0a">ИТОГО</th></tr></thead><tbody>';
+
+  AF_STAGES.forEach((st, si) => {
+    html += '<tr style="border-top:2px solid var(--border)">'
+      + '<td style="font-weight:600;color:var(--text);font-size:13px;padding:9px 14px">' + st.label + '</td>';
+    weeks.forEach((w, wi) => {
+      const cnt = counts[wi][si];
+      html += '<td style="text-align:right;font-variant-numeric:tabular-nums;padding:9px 14px;'
+        + (w.immature ? 'opacity:0.6' : '') + '">' + (cnt||'') + '</td>';
+    });
+    html += '<td style="text-align:right;font-variant-numeric:tabular-nums;font-weight:700;background:#1a1f0a;padding:9px 14px">'
+      + totals[si] + '</td></tr>';
+
+    if (si > 0) {
+      html += '<tr><td style="font-size:11px;color:var(--muted);padding:4px 14px 4px 28px">↳ к предыдущему</td>';
+      weeks.forEach((w, wi) => {
+        html += barCell(counts[wi][si], counts[wi][si-1], w.immature, '');
+      });
+      html += barCell(totals[si], totals[si-1], false, 'background:#1a1f0a;');
+      html += '</tr>';
+    }
+  });
+
+  html += '</tbody></table>'
+    + '<p style="font-size:11px;color:#555;margin-top:6px">* — неделя ещё не достигла 14 дней зрелости</p>'
+    + '</div>';
 
   document.getElementById('cohortTableWrap').innerHTML = html;
 }
