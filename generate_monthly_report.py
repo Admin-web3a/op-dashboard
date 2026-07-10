@@ -467,16 +467,16 @@ h2{font-size:14px;font-weight:600;color:#aaa;margin:18px 0 8px;text-transform:up
   <div class="chart-wrap"><canvas id="dailyChart" height="90"></canvas></div>
 </div>
 
-<!-- ── Manager + Overdue ── -->
-<div class="row2">
-  <div class="section">
-    <h2>Лиды по менеджерам</h2>
-    <div class="chart-wrap"><canvas id="mgrChart" height="200"></canvas></div>
-  </div>
-  <div class="section">
-    <h2>Просроченные задачи по менеджерам</h2>
-    <div class="chart-wrap"><canvas id="overdueChart" height="200"></canvas></div>
-  </div>
+<!-- ── Manager ── -->
+<div class="section">
+  <h2>Лиды по менеджерам</h2>
+  <div class="chart-wrap"><canvas id="mgrChart" height="130"></canvas></div>
+</div>
+
+<!-- ── Overdue ── -->
+<div class="section">
+  <h2>Просроченные задачи по менеджерам</h2>
+  <div class="chart-wrap"><canvas id="overdueChart" height="80"></canvas></div>
 </div>
 
 <!-- ── Funnel + Cohort ── -->
@@ -501,21 +501,21 @@ h2{font-size:14px;font-weight:600;color:#aaa;margin:18px 0 8px;text-transform:up
 <div class="row2">
   <div class="section">
     <h2>Выручка по менеджерам, ₽</h2>
-    <div class="chart-wrap"><canvas id="revenueChart" height="200"></canvas></div>
+    <div class="chart-wrap"><canvas id="revenueChart" height="160"></canvas></div>
   </div>
   <div class="section">
     <h2>Количество продаж по менеджерам</h2>
-    <div class="chart-wrap"><canvas id="salesCntChart" height="200"></canvas></div>
+    <div class="chart-wrap"><canvas id="salesCntChart" height="160"></canvas></div>
   </div>
 </div>
 <div class="row2">
   <div class="section">
     <h2>Конверсия «Взято в работу → Продажи» по менеджерам</h2>
-    <div class="chart-wrap"><canvas id="convMgrChart" height="200"></canvas></div>
+    <div class="chart-wrap"><canvas id="convMgrChart" height="160"></canvas></div>
   </div>
   <div class="section">
     <h2>Средний чек по менеджерам, ₽</h2>
-    <div class="chart-wrap"><canvas id="avgCheckChart" height="200"></canvas></div>
+    <div class="chart-wrap"><canvas id="avgCheckChart" height="160"></canvas></div>
   </div>
 </div>
 
@@ -1020,13 +1020,13 @@ function renderRevenueChart(leads) {
   if (!usedIds.length) { upsertChart('revenueChart',{type:'bar',data:{labels:['Нет данных'],datasets:[{data:[0]}]},options:{plugins:{datalabels:{display:false}},scales:{x:{ticks:{color:'#777'}},y:{ticks:{color:'#777'}}}}}); return; }
   upsertChart('revenueChart',{type:'bar',
     data:{labels:usedIds.map(u=>MANAGERS[u]),
-          datasets:[{data:usedIds.map(u=>rev[u]),backgroundColor:'#6ab04c',borderRadius:3}]},
-    options:{indexAxis:'y',responsive:true,
+          datasets:[{data:usedIds.map(u=>rev[u]),backgroundColor:'#6ab04c',borderRadius:4}]},
+    options:{responsive:true,
       plugins:{legend:{display:false},
-        datalabels:{color:'#ccc',font:{size:10},anchor:'end',align:'end',
+        datalabels:{color:'#ccc',font:{size:10},anchor:'end',align:'top',
           formatter:v=>v>=1e6?(v/1e6).toFixed(1).replace('.',',')+' млн':v>0?v.toLocaleString('ru-RU'):''}},
-      scales:{x:{ticks:{color:'#777'},grid:{color:'#1f2235'}},
-              y:{ticks:{color:'#ccc'},grid:{display:false}}} }});
+      scales:{x:{ticks:{color:'#aaa',maxRotation:35,font:{size:10}},grid:{display:false}},
+              y:{ticks:{color:'#777'},grid:{color:'#1f2235'}} } }});
 }
 
 function renderSalesCntChart(leads) {
@@ -1035,12 +1035,12 @@ function renderSalesCntChart(leads) {
   if (!usedIds.length) { upsertChart('salesCntChart',{type:'bar',data:{labels:['Нет данных'],datasets:[{data:[0]}]},options:{plugins:{datalabels:{display:false}},scales:{x:{ticks:{color:'#777'}},y:{ticks:{color:'#777'}}}}}); return; }
   upsertChart('salesCntChart',{type:'bar',
     data:{labels:usedIds.map(u=>MANAGERS[u]),
-          datasets:[{data:usedIds.map(u=>cnt[u]),backgroundColor:'#00cec9',borderRadius:3}]},
-    options:{indexAxis:'y',responsive:true,
+          datasets:[{data:usedIds.map(u=>cnt[u]),backgroundColor:'#00cec9',borderRadius:4}]},
+    options:{responsive:true,
       plugins:{legend:{display:false},
-        datalabels:{color:'#ccc',font:{size:11},anchor:'end',align:'end',formatter:v=>v>0?v:''}},
-      scales:{x:{ticks:{color:'#777'},grid:{color:'#1f2235'}},
-              y:{ticks:{color:'#ccc'},grid:{display:false}}} }});
+        datalabels:{color:'#ccc',font:{size:11},anchor:'end',align:'top',formatter:v=>v>0?v:''}},
+      scales:{x:{ticks:{color:'#aaa',maxRotation:35,font:{size:10}},grid:{display:false}},
+              y:{ticks:{color:'#777'},grid:{color:'#1f2235'}} } }});
 }
 
 function renderConvMgrChart(leads) {
@@ -1056,12 +1056,12 @@ function renderConvMgrChart(leads) {
   upsertChart('convMgrChart',{type:'bar',
     data:{labels:usedIds.map(u=>MANAGERS[u]),
           datasets:[{data:usedIds.map(u=>inWork[u]>0?Math.min(10,Math.round(sales[u]/inWork[u]*100)):0),
-            backgroundColor:'#a29bfe',borderRadius:3}]},
-    options:{indexAxis:'y',responsive:true,
+            backgroundColor:'#a29bfe',borderRadius:4}]},
+    options:{responsive:true,
       plugins:{legend:{display:false},
-        datalabels:{color:'#ccc',font:{size:11},anchor:'end',align:'end',formatter:v=>v>0?v+'%':''}},
-      scales:{x:{max:10,ticks:{color:'#777',callback:v=>v+'%'},grid:{color:'#1f2235'}},
-              y:{ticks:{color:'#ccc'},grid:{display:false}}} }});
+        datalabels:{color:'#ccc',font:{size:11},anchor:'end',align:'top',formatter:v=>v>0?v+'%':''}},
+      scales:{x:{ticks:{color:'#aaa',maxRotation:35,font:{size:10}},grid:{display:false}},
+              y:{max:10,ticks:{color:'#777',callback:v=>v+'%'},grid:{color:'#1f2235'}} } }});
 }
 
 function renderAvgCheckChart(leads) {
@@ -1071,13 +1071,13 @@ function renderAvgCheckChart(leads) {
   upsertChart('avgCheckChart',{type:'bar',
     data:{labels:usedIds.map(u=>MANAGERS[u]),
           datasets:[{data:usedIds.map(u=>cnt[u]>0?Math.round(rev[u]/cnt[u]):0),
-            backgroundColor:'#fdcb6e',borderRadius:3}]},
-    options:{indexAxis:'y',responsive:true,
+            backgroundColor:'#fdcb6e',borderRadius:4}]},
+    options:{responsive:true,
       plugins:{legend:{display:false},
-        datalabels:{color:'#ccc',font:{size:10},anchor:'end',align:'end',
+        datalabels:{color:'#ccc',font:{size:10},anchor:'end',align:'top',
           formatter:v=>v>0?v.toLocaleString('ru-RU'):''}},
-      scales:{x:{ticks:{color:'#777'},grid:{color:'#1f2235'}},
-              y:{ticks:{color:'#ccc'},grid:{display:false}}} }});
+      scales:{x:{ticks:{color:'#aaa',maxRotation:35,font:{size:10}},grid:{display:false}},
+              y:{ticks:{color:'#777'},grid:{color:'#1f2235'}} } }});
 }
 
 // ── Capital + Readiness ──────────────────────────────────────────────────────
