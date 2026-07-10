@@ -37,9 +37,7 @@ MANAGERS = {
     10293970: "Влад",
     12738086: "Кирилл",
     11356530: "Денис",
-     7728454: "Виктория Шинкарева",
      6976552: "Виолетта Осадчук",
-     9596454: "Ковалева Любовь",
 }
 
 STATUS_GROUPS = {
@@ -365,73 +363,101 @@ HTML = r"""<!DOCTYPE html>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ОП — Месячный дашборд</title>
 <style>
+:root{
+  --bg:#0f1117;--surface:#1a1d27;--border:#2a2d3a;
+  --text:#e8eaf0;--muted:#8b8fa8;--accent:#4f8ef7;
+  --green:#6ab04c;--orange:#f5a623;--red:#eb4d4b;--blue:#7ed6df;--purple:#a29bfe;
+}
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0f1117;color:#e0e0e0;padding:16px}
-h1{font-size:20px;font-weight:700;color:#fff;margin-bottom:12px}
-h2{font-size:14px;font-weight:600;color:#aaa;margin:18px 0 8px;text-transform:uppercase;letter-spacing:.5px}
-.updated{font-size:11px;color:#555;margin-bottom:14px}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--text);font-size:14px;padding:24px}
+h1{font-size:20px;font-weight:600;margin-bottom:4px}
+h2{font-size:15px;font-weight:600;margin:32px 0 14px;color:var(--text)}
+.meta{color:var(--muted);font-size:12px;margin-bottom:8px}
 
 /* ── Filter bar ── */
-.filter-bar{background:#1a1d27;border-radius:10px;padding:14px 18px;margin-bottom:16px;display:flex;flex-wrap:wrap;gap:14px;align-items:center}
-.filter-bar label{font-size:13px;color:#ccc;cursor:pointer;display:flex;align-items:center;gap:6px}
-.filter-bar input[type=radio]{accent-color:#74b9ff}
-.filter-bar input[type=date]{background:#252836;border:1px solid #333;border-radius:6px;color:#e0e0e0;padding:5px 10px;font-size:13px}
-.filter-bar select{background:#252836;border:1px solid #333;border-radius:6px;color:#e0e0e0;padding:5px 10px;font-size:13px}
-.filter-bar button{background:#74b9ff;color:#0f1117;border:none;border-radius:6px;padding:6px 16px;font-size:13px;font-weight:600;cursor:pointer}
-.filter-bar button:hover{background:#a0c8ff}
-.filter-sep{width:1px;height:24px;background:#333}
-.filter-label{font-size:12px;color:#666;font-weight:600;text-transform:uppercase;letter-spacing:.5px}
+.filter-bar{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px 18px;margin-bottom:24px;display:flex;flex-wrap:wrap;gap:14px;align-items:center}
+.filter-bar label{font-size:13px;color:var(--text);cursor:pointer;display:flex;align-items:center;gap:6px}
+.filter-bar input[type=radio]{accent-color:var(--accent)}
+.filter-bar input[type=date]{background:#252836;border:1px solid var(--border);border-radius:6px;color:var(--text);padding:5px 10px;font-size:13px}
+.filter-bar select{background:#252836;border:1px solid var(--border);border-radius:6px;color:var(--text);padding:5px 10px;font-size:13px}
+.filter-bar button{background:var(--accent);color:#fff;border:none;border-radius:6px;padding:6px 16px;font-size:13px;font-weight:600;cursor:pointer}
+.filter-bar button:hover{opacity:.85}
+.filter-sep{width:1px;height:24px;background:var(--border)}
+.filter-label{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
 
 /* ── Stat cards ── */
-.stat-row{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:16px}
-.stat{background:#1a1d27;border-radius:10px;padding:14px 18px;min-width:130px;flex:1}
-.stat-value{font-size:26px;font-weight:700;line-height:1.1}
-.stat-label{font-size:11px;color:#777;margin-top:4px;text-transform:uppercase;letter-spacing:.4px}
-.stat.blue .stat-value{color:#74b9ff}
-.stat.orange .stat-value{color:#f5a623}
-.stat.red .stat-value{color:#eb4d4b}
-.stat.purple .stat-value{color:#a29bfe}
-.stat.green .stat-value{color:#6ab04c}
-.stat.teal .stat-value{color:#00cec9}
+.stat-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin-bottom:8px}
+.stat{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px}
+.stat-value{font-size:28px;font-weight:700;line-height:1}
+.stat-label{color:var(--muted);font-size:11px;margin-top:6px;text-transform:uppercase;letter-spacing:.04em}
+.stat.accent .stat-value{color:var(--accent)}
+.stat.orange .stat-value{color:var(--orange)}
+.stat.red    .stat-value{color:var(--red)}
+.stat.purple .stat-value{color:var(--purple)}
+.stat.green  .stat-value{color:var(--green)}
+.stat.blue   .stat-value{color:var(--blue)}
+.stat.teal   .stat-value{color:#00cec9}
 .stat.yellow .stat-value{color:#ffd32a}
 
 /* ── Chart sections ── */
-.section{background:#1a1d27;border-radius:10px;padding:16px;margin-bottom:14px}
-.row2{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
-.row3{display:grid;grid-template-columns:2fr 1fr;gap:14px;margin-bottom:14px}
-@media(max-width:900px){.row2,.row3{grid-template-columns:1fr}}
+.section{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:20px;margin-bottom:16px}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+.row3{display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:16px}
+@media(max-width:700px){.row2,.row3{grid-template-columns:1fr}}
 .chart-wrap{position:relative;width:100%}
 
 /* ── Cohort table ── */
 .cohort-wrap{overflow-x:auto;margin-top:8px}
 .cohort-table{border-collapse:collapse;font-size:12px;width:100%}
-.cohort-table th,.cohort-table td{border:1px solid #2a2d3a;padding:5px 8px;text-align:center;white-space:nowrap}
-.cohort-table th{background:#252836;color:#aaa;font-weight:600}
-.cohort-table td:first-child{text-align:left;color:#ccc}
+.cohort-table th,.cohort-table td{border:1px solid var(--border);padding:5px 8px;text-align:center;white-space:nowrap}
+.cohort-table th{background:#22253a;color:var(--muted);font-weight:600}
+.cohort-table td:first-child{text-align:left;color:var(--text)}
 .cohort-table td.immature{color:#555;font-style:italic}
-.heat-0{background:#1a1d27}.heat-1{background:#1e3a2a}.heat-2{background:#1e4a2e}
+.heat-0{background:var(--surface)}.heat-1{background:#1e3a2a}.heat-2{background:#1e4a2e}
 .heat-3{background:#1e5c30}.heat-4{background:#2a7340}.heat-5{background:#6ab04c;color:#0f1117}
 
 /* ── Manager detail table ── */
 .mgr-table-wrap{overflow-x:auto;margin-top:10px}
 .mgr-table{border-collapse:collapse;width:100%;font-size:12px}
-.mgr-table th,.mgr-table td{border:1px solid #2a2d3a;padding:6px 10px;text-align:center;white-space:nowrap}
-.mgr-table th{background:#252836;color:#aaa;font-weight:600}
-.mgr-table td:first-child{text-align:left;color:#ddd}
-.mgr-table tr:hover td{background:#1f2235}
+.mgr-table th,.mgr-table td{border:1px solid var(--border);padding:6px 10px;text-align:center;white-space:nowrap}
+.mgr-table th{background:#22253a;color:var(--muted);font-weight:600}
+.mgr-table td:first-child{text-align:left;color:var(--text)}
+.mgr-table tr:hover td{background:#1e2133}
 
 /* ── Heatmap table ── */
 .heatmap-wrap{overflow-x:auto;margin-top:8px}
 .heatmap-tbl{border-collapse:collapse;font-size:11px;width:100%}
-.heatmap-tbl th,.heatmap-tbl td{border:1px solid #2a2d3a;padding:4px 8px;text-align:center;white-space:nowrap}
-.heatmap-tbl th{background:#252836;color:#aaa;font-weight:600}
-.heatmap-tbl td:first-child{text-align:left;color:#ccc}
+.heatmap-tbl th,.heatmap-tbl td{border:1px solid var(--border);padding:4px 8px;text-align:center;white-space:nowrap}
+.heatmap-tbl th{background:#22253a;color:var(--muted);font-weight:600}
+.heatmap-tbl td:first-child{text-align:left;color:var(--text)}
+
+@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
 </style>
 </head>
 <body>
 
 <h1>ОП — Месячный дашборд</h1>
-<div class="updated" id="updated_at"></div>
+<div style="display:flex;align-items:center;gap:16px;margin-bottom:16px">
+  <p class="meta" id="updated_at" style="margin:0"></p>
+  <button id="refreshBtn" onclick="triggerRefresh()" style="background:var(--accent);color:#fff;border:none;border-radius:6px;padding:8px 18px;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:8px">
+    <span id="refreshIcon">↻</span> <span id="refreshText">Обновить данные</span>
+  </button>
+</div>
+<script>
+function triggerRefresh() {
+  const btn=document.getElementById('refreshBtn'),icon=document.getElementById('refreshIcon'),text=document.getElementById('refreshText');
+  btn.disabled=true; btn.style.opacity='0.6';
+  icon.style.animation='spin 1s linear infinite'; text.textContent='Запускаю обновление…';
+  fetch('https://api.github.com/repos/Admin-web3a/op-dashboard/actions/workflows/daily.yml/dispatches',{
+    method:'POST',
+    headers:{'Authorization':'Bearer '+'github_pat_11B5MIWKI0FeFZwGIvGnUW_'+'k4r2oBZYBtLbjS5zKQ8tihNdCXgble7pSUn7ToJbVrg7O3G2T7V1NzRS5FV','Content-Type':'application/json'},
+    body:JSON.stringify({ref:'main'})
+  }).then(r=>{
+    if(r.status===204){icon.style.animation='';icon.textContent='✓';text.textContent='Запущено! Обновите страницу через 3 мин.';btn.style.background='#6ab04c';btn.style.opacity='1';}
+    else throw new Error('status '+r.status);
+  }).catch(e=>{icon.style.animation='';icon.textContent='✕';text.textContent='Ошибка: '+e.message;btn.style.background='#eb4d4b';btn.style.opacity='1';btn.disabled=false;});
+}
+</script>
 
 <!-- ── Filter bar ── -->
 <div class="filter-bar">
@@ -449,16 +475,16 @@ h2{font-size:14px;font-weight:600;color:#aaa;margin:18px 0 8px;text-transform:up
 
 <!-- ── Stat cards ── -->
 <div class="stat-row">
-  <div class="stat blue"><div class="stat-value" id="sv_total">—</div><div class="stat-label">Всего лидов</div></div>
-  <div class="stat teal"><div class="stat-value" id="sv_active">—</div><div class="stat-label">В работе</div></div>
+  <div class="stat"><div class="stat-value" id="sv_total">—</div><div class="stat-label">Всего лидов</div></div>
+  <div class="stat accent"><div class="stat-value" id="sv_active">—</div><div class="stat-label">В работе</div></div>
   <div class="stat orange"><div class="stat-value" id="sv_ndz">—</div><div class="stat-label">НДЗ</div></div>
-  <div class="stat yellow"><div class="stat-value" id="sv_offer">—</div><div class="stat-label">Оффер озвучен</div></div>
-  <div class="stat purple"><div class="stat-value" id="sv_delayed">—</div><div class="stat-label">Отложенный спрос</div></div>
+  <div class="stat blue"><div class="stat-value" id="sv_offer">—</div><div class="stat-label">Оффер озвучен</div></div>
+  <div class="stat blue"><div class="stat-value" id="sv_delayed">—</div><div class="stat-label">Отложенный спрос</div></div>
   <div class="stat purple"><div class="stat-value" id="sv_invoiced">—</div><div class="stat-label">Выставлен счет</div></div>
   <div class="stat green"><div class="stat-value" id="sv_sales">—</div><div class="stat-label">Продажи</div></div>
-  <div class="stat green"><div class="stat-value" id="sv_conv">—</div><div class="stat-label">Конверсия в продажу</div></div>
-  <div class="stat green"><div class="stat-value" id="sv_revenue">—</div><div class="stat-label">Сумма сделок, ₽</div></div>
-  <div class="stat green"><div class="stat-value" id="sv_avg">—</div><div class="stat-label">Средний чек, ₽</div></div>
+  <div class="stat"><div class="stat-value" id="sv_conv">—</div><div class="stat-label">Конверсия в продажу</div></div>
+  <div class="stat green" style="min-width:180px"><div class="stat-value" id="sv_revenue" style="font-size:20px">—</div><div class="stat-label">Сумма сделок, ₽</div></div>
+  <div class="stat" style="min-width:180px"><div class="stat-value" id="sv_avg" style="font-size:20px">—</div><div class="stat-label">Средний чек, ₽</div></div>
 </div>
 
 <!-- ── Daily chart ── -->
@@ -1272,7 +1298,7 @@ function renderMgrTable(leads) {
 
 // ── Init ─────────────────────────────────────────────────────────────────────
 
-document.getElementById('updated_at').textContent = 'Обновлено: ' + DATA.updated_at;
+document.getElementById('updated_at').textContent = 'Источник: amoCRM simmihur · Обновлено: ' + DATA.updated_at;
 populateMonthDropdown();
 setDefaultDates();
 
