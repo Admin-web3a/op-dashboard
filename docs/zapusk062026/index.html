@@ -1,0 +1,1345 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ОП Dashboard — Анкета перезаписи 06.2026</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+<script>
+// Unregister datalabels globally — we register it per-chart where needed
+if(typeof ChartDataLabels !== 'undefined') {
+  Chart.unregister(ChartDataLabels);
+}
+</script>
+<style>
+  :root {
+    --bg:#0f1117;--surface:#1a1d27;--border:#2a2d3a;
+    --text:#e8eaf0;--muted:#8b8fa8;--accent:#4f8ef7;
+    --green:#6ab04c;--orange:#f5a623;--red:#eb4d4b;--blue:#7ed6df;--purple:#a29bfe;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:14px;padding:24px}
+  h1{font-size:20px;font-weight:600;margin-bottom:4px}
+  h2{font-size:15px;font-weight:600;margin:32px 0 14px;color:var(--text)}
+  .meta{color:var(--muted);font-size:12px;margin-bottom:28px}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin-bottom:8px}
+  .stat{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px}
+  .stat-value{font-size:28px;font-weight:700;line-height:1}
+  .stat-label{color:var(--muted);font-size:11px;margin-top:6px;text-transform:uppercase;letter-spacing:.04em}
+  .stat.accent .stat-value{color:var(--accent)}
+  .stat.orange .stat-value{color:var(--orange)}
+  .stat.green  .stat-value{color:var(--green)}
+  .stat.blue   .stat-value{color:var(--blue)}
+  .stat.purple .stat-value{color:var(--purple)}
+  .stat.red    .stat-value{color:var(--red)}
+  .chart-card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:20px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:700px){.grid2{grid-template-columns:1fr}}
+  table{width:100%;border-collapse:collapse;background:var(--surface);border:1px solid var(--border);border-radius:8px;overflow:hidden}
+  th{background:#22253a;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.04em;padding:10px 14px;text-align:left}
+  td{padding:9px 14px;border-top:1px solid var(--border)}
+  tr:hover td{background:#1e2133}
+  .tag{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600}
+  .tag-incoming{background:#1a2f4a;color:#74b9ff}
+  .tag-new-lead{background:#0d2540;color:#0984e3}
+  .tag-om{background:#221a40;color:#6c5ce7}
+  .tag-in-work{background:#0a3030;color:#00cec9}
+  .tag-contact{background:#3a3000;color:#ffd32a}
+  .tag-qualified{background:#3a1020;color:#ff6b81}
+  .tag-ndz{background:#3a2800;color:var(--orange)}
+  .tag-offer{background:#0a2e30;color:var(--blue)}
+  .tag-delayed{background:#2a1a4a;color:#a29bfe}
+  .tag-sale{background:#1a2e0a;color:var(--green)}
+  .tag-lost{background:#2e0a0a;color:var(--red)}
+  .num{text-align:right;font-variant-numeric:tabular-nums}
+</style>
+</head>
+<body>
+<h1>ОП Dashboard — Анкета перезаписи 06.2026</h1>
+<div style="display:flex;align-items:center;gap:16px;margin-bottom:16px">
+  <p class="meta" style="margin:0">Источник: amoCRM simmihur &nbsp;·&nbsp; Обновлено: 10.07.2026 17:44 МСК</p>
+  <button id="refreshBtn" onclick="triggerRefresh()" style="background:#4f8ef7;color:#fff;border:none;border-radius:6px;padding:8px 18px;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:8px">
+    <span id="refreshIcon">↻</span> <span id="refreshText">Обновить данные</span>
+  </button>
+</div>
+<div style="display:flex;align-items:center;gap:8px;margin-bottom:28px;padding:12px 16px;background:#1a2236;border-radius:10px;border:1px solid #2a3550">
+  <span style="font-size:13px;color:#a0aec0;margin-right:4px">Источник данных:</span>
+  <div id="globalSrcToggle" style="display:flex;gap:8px"></div>
+</div>
+<script>
+function triggerRefresh() {
+  const btn  = document.getElementById('refreshBtn');
+  const icon = document.getElementById('refreshIcon');
+  const text = document.getElementById('refreshText');
+  btn.disabled = true;
+  btn.style.opacity = '0.6';
+  icon.style.display = 'inline-block';
+  icon.style.animation = 'spin 1s linear infinite';
+  text.textContent = 'Запускаю обновление…';
+  fetch('https://api.github.com/repos/Admin-web3a/op-dashboard/actions/workflows/daily.yml/dispatches', {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer ' + 'github_pat_11B5MIWKI0FeFZwGIvGnUW_' + 'k4r2oBZYBtLbjS5zKQ8tihNdCXgble7pSUn7ToJbVrg7O3G2T7V1NzRS5FV',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ref: 'main'}),
+  })
+  .then(function(r) {
+    if(r.status === 204) {
+      icon.style.animation = '';
+      icon.textContent = '✓';
+      text.textContent = 'Запущено! Обновите страницу через 3 мин.';
+      btn.style.background = '#6ab04c';
+      btn.style.opacity = '1';
+    } else {
+      throw new Error('status ' + r.status);
+    }
+  })
+  .catch(function(e) {
+    icon.style.animation = '';
+    icon.textContent = '✕';
+    text.textContent = 'Ошибка: ' + e.message;
+    btn.style.background = '#eb4d4b';
+    btn.style.opacity = '1';
+    btn.disabled = false;
+  });
+}
+</script>
+<style>
+@keyframes spin { from {transform:rotate(0deg)} to {transform:rotate(360deg)} }
+</style>
+
+<div class="stats" id="statCards">
+  <div class="stat"><div class="stat-value" id="sv_total">2 315</div><div class="stat-label">Всего лидов</div></div>
+  <div class="stat accent"><div class="stat-value" id="sv_inwork">440</div><div class="stat-label">В работе</div></div>
+  <div class="stat orange"><div class="stat-value" id="sv_ndz">987</div><div class="stat-label">НДЗ</div></div>
+  <div class="stat blue"><div class="stat-value" id="sv_offer">42</div><div class="stat-label">Оффер озвучен</div></div>
+  <div class="stat blue"><div class="stat-value" id="sv_delayed">80</div><div class="stat-label">Отложенный спрос</div></div>
+  <div class="stat purple"><div class="stat-value" id="sv_invoiced">3</div><div class="stat-label">Выставлен счет</div></div>
+  <div class="stat green"><div class="stat-value" id="sv_sale">51</div><div class="stat-label">Продажи</div></div>
+  <div class="stat"><div class="stat-value" id="sv_conv">2.2%</div><div class="stat-label">Конверсия в продажу</div></div>
+  <div class="stat" style="min-width:180px"><div class="stat-value" id="sv_revenue" style="font-size:20px">10 946 592</div><div class="stat-label">Сумма сделок, ₽</div></div>
+  <div class="stat" style="min-width:180px"><div class="stat-value" id="sv_avg" style="font-size:20px">218 932</div><div class="stat-label">Средний чек, ₽</div></div>
+  <div class="stat green" style="min-width:200px"><div class="stat-value" id="sv_avg_noprepay" style="font-size:20px">233 042</div><div class="stat-label">Ср. чек без предоплат, ₽</div></div>
+</div>
+
+<h2>Лиды по дням (с 6 июня)</h2>
+<div class="chart-card" style="height:200px"><canvas id="dailyChart"></canvas></div>
+
+<h2>Лиды по капиталу по дням</h2>
+<div class="chart-card" style="height:260px"><canvas id="dailyCapChart"></canvas></div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px;align-items:start">
+  <div>
+    <h2>Капитал клиентов</h2>
+    <div class="chart-card" style="height:320px"><canvas id="capitalChart"></canvas></div>
+  </div>
+  <div>
+    <h2>Готовность присоединиться</h2>
+    <div class="chart-card" style="height:320px"><canvas id="readyChart"></canvas></div>
+  </div>
+</div>
+
+<h2>Кумулятивная воронка (атрибутированная)</h2>
+<div class="chart-card" style="height:360px"><canvas id="cumFunnelChart"></canvas></div>
+
+<h2>Конверсия по неделям (когортный анализ)</h2>
+<p style="color:#8b8fa8;font-size:12px;margin:-10px 0 14px">Лиды сгруппированы по дате создания (неделя пн–вс). * — незрелые когорты (&lt;14 дней), конверсия занижена.</p>
+<div style="overflow-x:auto">
+<table id="cohortTable" style="min-width:600px"></table>
+</div>
+
+<h2>Конверсия: Взято в работу → Контакт установлен</h2>
+<div class="chart-card" style="height:320px"><canvas id="convFunnelChart"></canvas></div>
+
+<h2>Лиды по менеджерам</h2>
+<div class="chart-card" style="height:600px"><canvas id="mgrChart"></canvas></div>
+
+<h2>Просроченные задачи по менеджерам</h2>
+<div class="chart-card" style="height:600px"><canvas id="overdueChart"></canvas></div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start;margin-bottom:16px">
+  <div>
+    <h2>Выручка по менеджерам</h2>
+    <div class="chart-card" style="height:360px"><canvas id="revenueChart"></canvas></div>
+  </div>
+  <div>
+    <h2>Количество продаж по менеджерам</h2>
+    <div class="chart-card" style="height:360px"><canvas id="mgrSalesChart"></canvas></div>
+  </div>
+</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start">
+  <div>
+    <h2>Конверсия Взято в работу → Продажи</h2>
+    <div class="chart-card" style="height:360px"><canvas id="mgrConvChart"></canvas></div>
+  </div>
+  <div>
+    <h2>Средний чек по менеджерам</h2>
+    <div class="chart-card" style="height:360px"><canvas id="mgrAvgChart"></canvas></div>
+  </div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start">
+  <div>
+    <h2>Продажи по тарифам</h2>
+    <div class="chart-card" style="height:320px"><canvas id="tariffChart"></canvas></div>
+  </div>
+  <div>
+    <h2>Лиды по странам</h2>
+    <div class="chart-card" style="height:380px"><canvas id="countryChart"></canvas></div>
+  </div>
+</div>
+
+<h2>Статусы по странам</h2>
+<div id="cstatWeekBtns" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px"></div>
+<div class="chart-card" style="height:420px"><canvas id="countryStatusChart"></canvas></div>
+
+<h2>Лиды по менеджерам × странам</h2>
+<div id="mgrCountryWeekBtns" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px"></div>
+<div class="chart-card" style="overflow-x:auto;padding:16px">
+  <table id="mgrCountryTable" style="width:100%;border-collapse:collapse;font-size:13px"></table>
+</div>
+
+<h2>Воронка вебинара 06.26</h2>
+<div id="webinarFunnel" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:24px">
+
+  <!-- filled by JS -->
+</div>
+
+<h2>Структура продаж по источнику</h2>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:8px">
+  <div class="chart-card" style="height:240px">
+    <div style="font-size:12px;color:#8b8fa8;margin-bottom:8px">Количество продаж</div>
+    <canvas id="saleCountChart"></canvas>
+  </div>
+  <div class="chart-card" style="height:240px">
+    <div style="font-size:12px;color:#8b8fa8;margin-bottom:8px">Выручка, ₽</div>
+    <canvas id="saleRevenueChart"></canvas>
+  </div>
+</div>
+
+<h2>Причины закрытия сделок</h2>
+<div class="chart-card" style="height:320px"><canvas id="reasonChart"></canvas></div>
+
+<h2>Детализация по менеджерам</h2>
+<div style="overflow-x:auto">
+<table>
+  <thead><tr>
+    <th>Менеджер</th>
+    <th class="num">Всего</th>
+    <th class="num">Входящие</th>
+    <th class="num">Новый лид</th>
+    <th class="num">ОМ назначен</th>
+    <th class="num">Взято в работу</th>
+    <th class="num">Контакт уст.</th>
+    <th class="num">Квалифицирован</th>
+    <th class="num">НДЗ</th>
+    <th class="num">Оффер озвучен</th>
+    <th class="num">Отложен</th>
+    <th class="num">Продажи+</th>
+    <th class="num">Потеряно</th>
+    <th class="num">Просрочено</th>
+  </tr></thead>
+  <tbody id="mgrTable"></tbody>
+</table>
+</div>
+
+<script>
+const DATA = {"sorted_statuses": [{"name": "ом назначен", "count": 1, "group": "om", "pipeline": "Основная воронка ОП"}, {"name": "Взято в работу", "count": 79, "group": "in_work", "pipeline": "Основная воронка ОП"}, {"name": "НДЗ", "count": 987, "group": "ndz", "pipeline": "Основная воронка ОП"}, {"name": "Контакт установлен", "count": 325, "group": "contact", "pipeline": "Основная воронка ОП"}, {"name": "Квалифицирован", "count": 35, "group": "qualified", "pipeline": "Основная воронка ОП"}, {"name": "Оффер озвучен", "count": 42, "group": "offer", "pipeline": "Основная воронка ОП"}, {"name": "Отложенный спрос", "count": 80, "group": "delayed", "pipeline": "Основная воронка ОП"}, {"name": "Выставлен счет", "count": 3, "group": "invoiced", "pipeline": "Основная воронка ОП"}, {"name": "Внутренняя рассрочка", "count": 7, "group": "sale", "pipeline": "Основная воронка ОП"}, {"name": "Успешно реализовано", "count": 44, "group": "sale", "pipeline": "Money-Dick"}, {"name": "Закрыто и не реализовано", "count": 710, "group": "lost", "pipeline": "Money-Dick"}, {"name": "Встреча с ментором", "count": 1, "group": "active", "pipeline": "Основная воронка ОП"}], "group_counts": {"qualified": 35, "contact": 325, "ndz": 987, "lost": 710, "offer": 42, "delayed": 80, "sale": 51, "in_work": 79, "invoiced": 3, "om": 1, "excursion": 1, "active": 1}, "total_all": 2315, "revenue_all": 10946592, "avg_price_all": 218932, "managers": {"12377210": "Никита Саламатин", "11176694": "Наталья", "6461602": "Зверева Елена", "11181290": "Сергей", "9948090": "Денис Криницын", "11068965": "Максим Лисевский", "10293970": "Влад", "12738086": "Кирилл", "11356530": "Денис", "7728454": "Виктория Шинкарева", "6976552": "Виолетта Осадчук", "9596454": "Ковалева Любовь"}, "mgr_viz": {"6461602": {"qualified": 14, "contact": 27, "lost": 24, "sale": 5, "offer": 7, "ndz": 23, "delayed": 7}, "9948090": {"contact": 37, "ndz": 174, "lost": 41, "offer": 10, "in_work": 1, "delayed": 4, "qualified": 2, "sale": 2}, "7728454": {"lost": 17, "ndz": 124, "contact": 30, "sale": 1}, "12377210": {"offer": 5, "contact": 20, "delayed": 23, "qualified": 6, "in_work": 5, "lost": 223, "sale": 9, "ndz": 47}, "11176694": {"contact": 47, "ndz": 126, "delayed": 13, "qualified": 4, "sale": 11, "lost": 85, "offer": 8, "om": 1, "in_work": 3}, "10293970": {"contact": 79, "lost": 17, "ndz": 138, "sale": 9, "delayed": 24, "offer": 3}, "12738086": {"contact": 54, "delayed": 2, "offer": 6, "lost": 40, "ndz": 173, "sale": 4}, "11356530": {"contact": 8, "in_work": 67, "offer": 2, "sale": 3, "ndz": 88, "qualified": 1, "lost": 15}, "11181290": {"sale": 8, "in_work": 3, "ndz": 94, "contact": 23, "qualified": 8, "lost": 137, "delayed": 7, "active": 1, "offer": 1}, "11068965": {"sale": 2, "lost": 14}, "9596454": {"lost": 3}}, "mgr_detail": {"6461602": {"qualified": 14, "contact": 27, "lost": 24, "sale": 5, "offer": 7, "ndz": 23, "delayed": 7}, "9948090": {"contact": 37, "ndz": 174, "lost": 41, "offer": 10, "in_work": 1, "delayed": 4, "qualified": 2, "sale": 2}, "7728454": {"lost": 17, "ndz": 124, "contact": 30, "sale": 1}, "12377210": {"offer": 5, "contact": 20, "delayed": 23, "qualified": 6, "in_work": 5, "lost": 223, "sale": 9, "ndz": 47}, "11176694": {"contact": 47, "ndz": 126, "delayed": 13, "qualified": 4, "sale": 11, "lost": 85, "offer": 8, "om": 1, "in_work": 3}, "10293970": {"contact": 79, "lost": 17, "ndz": 138, "sale": 9, "delayed": 24, "offer": 3}, "12738086": {"contact": 54, "delayed": 2, "offer": 6, "lost": 40, "ndz": 173, "sale": 4}, "11356530": {"contact": 8, "in_work": 67, "offer": 2, "sale": 3, "ndz": 88, "qualified": 1, "lost": 15}, "11181290": {"sale": 8, "in_work": 3, "ndz": 94, "contact": 23, "qualified": 8, "lost": 137, "delayed": 7, "active": 1, "offer": 1}, "11068965": {"sale": 2, "lost": 14}, "9596454": {"lost": 3}}, "mgr_viz_prereg": {"12377210": {"offer": 5, "contact": 20, "delayed": 23, "qualified": 6, "in_work": 5, "lost": 209, "sale": 5, "ndz": 47}, "11176694": {"contact": 46, "ndz": 126, "delayed": 13, "qualified": 4, "lost": 83, "offer": 8, "in_work": 3, "sale": 6}, "6461602": {"qualified": 14, "contact": 27, "sale": 2, "offer": 7, "ndz": 22, "lost": 21, "delayed": 7}, "11181290": {"in_work": 3, "ndz": 94, "contact": 23, "qualified": 8, "lost": 131, "sale": 5, "delayed": 7, "active": 1, "offer": 1}, "9948090": {"contact": 37, "ndz": 173, "lost": 39, "offer": 9, "in_work": 1, "delayed": 4, "qualified": 2}, "11068965": {"sale": 2, "lost": 14}, "10293970": {"contact": 79, "lost": 17, "ndz": 138, "sale": 6, "delayed": 24, "offer": 3}, "12738086": {"contact": 54, "delayed": 2, "offer": 6, "lost": 40, "ndz": 173, "sale": 1}, "11356530": {"contact": 8, "in_work": 66, "offer": 2, "ndz": 88, "qualified": 1, "lost": 15, "sale": 1}, "7728454": {"lost": 15, "ndz": 124, "contact": 30, "sale": 1}, "6976552": {}, "9596454": {"lost": 3}}, "mgr_viz_web": {"12377210": {"sale": 4, "lost": 14}, "11176694": {"sale": 5, "contact": 1, "om": 1, "lost": 2}, "6461602": {"lost": 3, "sale": 3, "ndz": 1}, "11181290": {"sale": 3, "lost": 6}, "9948090": {"ndz": 1, "lost": 2, "offer": 1, "sale": 2}, "11068965": {}, "10293970": {"sale": 3}, "12738086": {"sale": 3}, "11356530": {"sale": 2, "in_work": 1}, "7728454": {"lost": 2}, "6976552": {}, "9596454": {}}, "overdue": {"11176694": 36, "11068965": 6, "6461602": 56, "11181290": 1}, "overdue_prereg": {"11176694": 36, "11068965": 6, "6461602": 56, "11181290": 1}, "overdue_web": {}, "daily_labels": ["06.06", "07.06", "08.06", "09.06", "10.06", "11.06", "12.06", "13.06", "14.06", "15.06", "16.06", "17.06", "18.06", "19.06", "20.06", "21.06", "22.06", "23.06", "24.06", "25.06", "26.06", "27.06", "28.06", "29.06", "30.06", "01.07", "02.07", "03.07", "04.07", "05.07", "06.07", "07.07", "08.07", "09.07", "10.07"], "daily_values": [129, 164, 132, 55, 145, 88, 61, 56, 194, 191, 134, 85, 25, 74, 40, 51, 68, 65, 108, 86, 105, 80, 19, 37, 13, 8, 10, 6, 9, 14, 7, 5, 7, 4, 4], "capital_labels": ["$0-5,000", "до $5,000", "$5,000-50,000", "$50,000-100,000", "$100,000-500,000", "$500,000-1,000,000", "$1,000,000+", "Неизвестно", "Не указан"], "capital_values": [18, 729, 750, 176, 88, 10, 8, 13, 523], "daily_cap_labels": ["06.06", "07.06", "08.06", "09.06", "10.06", "11.06", "12.06", "13.06", "14.06", "15.06", "16.06", "17.06", "18.06", "19.06", "20.06", "21.06", "22.06", "23.06", "24.06", "25.06", "26.06", "27.06", "28.06", "29.06", "30.06", "01.07", "02.07", "03.07", "04.07", "05.07", "06.07", "07.07", "08.07", "09.07", "10.07"], "daily_cap_data": {"$0-5,000": [0, 1, 2, 1, 2, 0, 0, 0, 2, 1, 0, 1, 0, 1, 1, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0], "до $5,000": [35, 60, 46, 20, 64, 36, 27, 22, 54, 70, 43, 21, 11, 26, 15, 10, 20, 14, 34, 21, 26, 10, 6, 0, 6, 2, 2, 2, 2, 5, 1, 2, 1, 2, 1], "$5,000-50,000": [58, 70, 51, 22, 48, 32, 17, 13, 59, 68, 42, 26, 8, 25, 9, 15, 29, 18, 20, 17, 18, 16, 2, 23, 3, 4, 5, 2, 5, 5, 2, 0, 2, 2, 1], "$50,000-100,000": [17, 18, 12, 5, 6, 8, 2, 3, 22, 19, 7, 3, 2, 3, 4, 3, 9, 5, 5, 3, 6, 2, 0, 1, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 2], "$100,000-500,000": [10, 5, 8, 1, 6, 4, 3, 6, 3, 7, 2, 2, 1, 1, 2, 2, 4, 2, 2, 0, 2, 4, 0, 5, 1, 0, 0, 0, 0, 1, 2, 2, 0, 0, 0], "$500,000-1,000,000": [0, 0, 0, 2, 1, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], "$1,000,000+": [1, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], "Неизвестно": [0, 0, 2, 0, 0, 1, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0], "Не указан": [8, 10, 11, 3, 17, 7, 11, 12, 52, 24, 39, 32, 3, 17, 8, 21, 6, 23, 45, 44, 50, 47, 9, 7, 3, 1, 3, 0, 1, 3, 0, 0, 3, 0, 0]}, "ready_labels": ["Хочу_больше_узнать_про_программу", "Не ответил на вопрос", "Супер_Я_готов"], "ready_values": [1136, 765, 414], "conv_dates": ["01.06–07.06", "08.06–14.06", "15.06–21.06", "22.06–28.06", "29.06–05.07", "06.07–12.07"], "conv_dates_prereg": ["01.06–07.06", "08.06–14.06", "15.06–21.06", "22.06–28.06", "29.06–05.07", "06.07–12.07"], "conv_dates_web": ["01.06–07.06", "08.06–14.06", "15.06–21.06", "22.06–28.06", "29.06–05.07", "06.07–12.07"], "conv_vzv": [98, 227, 144, 104, 24, 7], "conv_pct": [99, 97, 83, 66, 75, 43], "conv_vzv_prereg": [95, 225, 143, 102, 7, 4], "conv_pct_prereg": [99, 97, 83, 66, 29, 0], "conv_vzv_web": [3, 2, 1, 2, 17, 3], "conv_pct_web": [100, 100, 100, 100, 94, 100], "reason_labels": ["Не дозвонились", "Уже покупал Инфинити", "Не актуально", "Купил ранее этот курс", "Пришла другая заявка", "Нет бюджета", "Некорректные данные", "Оставил заказ", "Перестал отвечать", "Нецелевой", "У самого отлично получается", "Дорого", "Отложенный интерес", "Другое (написать в примечании)", "Интересуют бесплатные продукты", "Удалил контакты", "Сброс после приветствия", "Не оставил данные", "Внес предоплату", "ВОЗВРАТ", "Купил Мастер-группу", "Уже покупал Ментор", "Купил другие курсы"], "reason_values": [191, 72, 51, 47, 47, 42, 34, 30, 18, 18, 15, 15, 12, 11, 11, 10, 7, 5, 3, 3, 2, 1, 1], "country_labels": ["Россия", "Беларусь", "Украина", "Казахстан", "Германия", "США", "Польша", "Латвия", "Литва", "Грузия", "Прочие"], "country_values": [1163, 148, 144, 51, 46, 27, 27, 25, 17, 17, 650], "country_labels_prereg": ["Россия", "Беларусь", "Украина", "Казахстан", "Германия", "Польша", "США", "Латвия", "Литва", "Грузия", "Прочие"], "country_values_prereg": [1142, 146, 138, 51, 46, 27, 26, 25, 17, 17, 612], "country_labels_web": ["Россия", "Украина", "Беларусь", "Великобритания", "США", "Прочие"], "country_values_web": [21, 6, 2, 1, 1, 37], "cstat_datasets": [{"label": "Входящие/Новые", "color": "#74b9ff", "data": [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"label": "В работе", "color": "#00cec9", "data": [254, 41, 28, 7, 12, 3, 8, 4, 0, 5, 77]}, {"label": "Оффер/Отложен", "color": "#f5a623", "data": [79, 7, 5, 2, 3, 0, 1, 0, 2, 2, 21]}, {"label": "Продажи", "color": "#6ab04c", "data": [27, 2, 8, 0, 1, 1, 1, 2, 1, 0, 11]}, {"label": "НДЗ", "color": "#fdcb6e", "data": [463, 60, 69, 34, 19, 15, 11, 16, 12, 8, 280]}, {"label": "Потеряно", "color": "#636e72", "data": [338, 38, 33, 8, 11, 8, 6, 3, 2, 2, 261]}], "cstat_by_week": {"Все время": [{"label": "Входящие/Новые", "color": "#74b9ff", "data": [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"label": "В работе", "color": "#00cec9", "data": [254, 41, 28, 7, 12, 3, 8, 4, 0, 5, 77]}, {"label": "Оффер/Отложен", "color": "#f5a623", "data": [79, 7, 5, 2, 3, 0, 1, 0, 2, 2, 21]}, {"label": "Продажи", "color": "#6ab04c", "data": [27, 2, 8, 0, 1, 1, 1, 2, 1, 0, 11]}, {"label": "НДЗ", "color": "#fdcb6e", "data": [463, 60, 69, 34, 19, 15, 11, 16, 12, 8, 280]}, {"label": "Потеряно", "color": "#636e72", "data": [338, 38, 33, 8, 11, 8, 6, 3, 2, 2, 261]}], "01.06–07.06": [{"label": "Входящие/Новые", "color": "#74b9ff", "data": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"label": "В работе", "color": "#00cec9", "data": [31, 11, 5, 0, 2, 0, 2, 1, 0, 1, 8]}, {"label": "Оффер/Отложен", "color": "#f5a623", "data": [17, 2, 2, 0, 0, 0, 0, 0, 0, 0, 5]}, {"label": "Продажи", "color": "#6ab04c", "data": [6, 0, 1, 0, 0, 0, 0, 0, 1, 0, 2]}, {"label": "НДЗ", "color": "#fdcb6e", "data": [43, 7, 6, 1, 1, 2, 2, 2, 2, 1, 34]}, {"label": "Потеряно", "color": "#636e72", "data": [56, 2, 6, 0, 0, 0, 0, 2, 0, 0, 28]}], "06.07–12.07": [{"label": "Входящие/Новые", "color": "#74b9ff", "data": [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"label": "В работе", "color": "#00cec9", "data": [3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]}, {"label": "Оффер/Отложен", "color": "#f5a623", "data": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"label": "Продажи", "color": "#6ab04c", "data": [0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 2]}, {"label": "НДЗ", "color": "#fdcb6e", "data": [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"label": "Потеряно", "color": "#636e72", "data": [6, 1, 0, 0, 0, 0, 0, 0, 0, 0, 11]}], "08.06–14.06": [{"label": "Входящие/Новые", "color": "#74b9ff", "data": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"label": "В работе", "color": "#00cec9", "data": [102, 10, 10, 1, 4, 1, 0, 0, 0, 1, 22]}, {"label": "Оффер/Отложен", "color": "#f5a623", "data": [41, 4, 2, 2, 2, 0, 0, 0, 0, 1, 7]}, {"label": "Продажи", "color": "#6ab04c", "data": [9, 1, 2, 0, 1, 0, 0, 2, 0, 0, 2]}, {"label": "НДЗ", "color": "#fdcb6e", "data": [136, 18, 18, 8, 5, 4, 3, 4, 3, 2, 71]}, {"label": "Потеряно", "color": "#636e72", "data": [129, 12, 10, 3, 7, 1, 2, 0, 0, 0, 66]}], "15.06–21.06": [{"label": "Входящие/Новые", "color": "#74b9ff", "data": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"label": "В работе", "color": "#00cec9", "data": [70, 7, 8, 2, 3, 0, 3, 2, 0, 0, 26]}, {"label": "Оффер/Отложен", "color": "#f5a623", "data": [8, 0, 1, 0, 1, 0, 1, 0, 1, 1, 5]}, {"label": "Продажи", "color": "#6ab04c", "data": [2, 0, 2, 0, 0, 0, 1, 0, 0, 0, 0]}, {"label": "НДЗ", "color": "#fdcb6e", "data": [135, 8, 26, 8, 9, 7, 5, 5, 3, 3, 86]}, {"label": "Потеряно", "color": "#636e72", "data": [71, 10, 10, 0, 3, 4, 0, 0, 0, 2, 61]}], "22.06–28.06": [{"label": "Входящие/Новые", "color": "#74b9ff", "data": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"label": "В работе", "color": "#00cec9", "data": [40, 12, 4, 4, 3, 2, 3, 1, 0, 3, 18]}, {"label": "Оффер/Отложен", "color": "#f5a623", "data": [6, 0, 0, 0, 0, 0, 0, 0, 1, 0, 4]}, {"label": "Продажи", "color": "#6ab04c", "data": [0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 2]}, {"label": "НДЗ", "color": "#fdcb6e", "data": [130, 26, 17, 17, 4, 2, 1, 5, 3, 2, 82]}, {"label": "Потеряно", "color": "#636e72", "data": [60, 12, 4, 5, 1, 3, 4, 1, 2, 0, 45]}], "29.06–05.07": [{"label": "Входящие/Новые", "color": "#74b9ff", "data": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"label": "В работе", "color": "#00cec9", "data": [4, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1]}, {"label": "Оффер/Отложен", "color": "#f5a623", "data": [3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"label": "Продажи", "color": "#6ab04c", "data": [9, 1, 1, 0, 0, 1, 0, 0, 0, 0, 2]}, {"label": "НДЗ", "color": "#fdcb6e", "data": [11, 1, 1, 0, 0, 0, 0, 0, 0, 0, 6]}, {"label": "Потеряно", "color": "#636e72", "data": [9, 1, 3, 0, 0, 0, 0, 0, 0, 0, 41]}]}, "cstat_by_week_prereg": {"Все время": [{"label": "Входящие/Новые", "color": "#74b9ff", "data": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"label": "В работе", "color": "#00cec9", "data": [253, 41, 28, 7, 12, 3, 8, 4, 0, 5, 76]}, {"label": "Оффер/Отложен", "color": "#f5a623", "data": [78, 7, 5, 2, 3, 0, 1, 0, 2, 2, 21]}, {"label": "Продажи", "color": "#6ab04c", "data": [13, 1, 4, 0, 1, 0, 1, 2, 1, 0, 5]}, {"label": "НДЗ", "color": "#fdcb6e", "data": [463, 60, 68, 34, 19, 15, 11, 16, 12, 8, 279]}, {"label": "Потеряно", "color": "#636e72", "data": [334, 37, 32, 8, 11, 8, 6, 3, 2, 2, 231]}], "01.06–07.06": [{"label": "Входящие/Новые", "color": "#74b9ff", "data": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"label": "В работе", "color": "#00cec9", "data": [31, 11, 5, 0, 2, 0, 2, 1, 0, 1, 8]}, {"label": "Оффер/Отложен", "color": "#f5a623", "data": [17, 2, 2, 0, 0, 0, 0, 0, 0, 0, 5]}, {"label": "Продажи", "color": "#6ab04c", "data": [5, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1]}, {"label": "НДЗ", "color": "#fdcb6e", "data": [43, 7, 6, 1, 1, 2, 2, 2, 2, 1, 34]}, {"label": "Потеряно", "color": "#636e72", "data": [56, 2, 6, 0, 0, 0, 0, 2, 0, 0, 28]}], "06.07–12.07": [{"label": "Входящие/Новые", "color": "#74b9ff", "data": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"label": "В работе", "color": "#00cec9", "data": [3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]}, {"label": "Оффер/Отложен", "color": "#f5a623", "data": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"label": "Продажи", "color": "#6ab04c", "data": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"label": "НДЗ", "color": "#fdcb6e", "data": [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"label": "Потеряно", "color": "#636e72", "data": [4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 6]}], "08.06–14.06": [{"label": "Входящие/Новые", "color": "#74b9ff", "data": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"label": "В работе", "color": "#00cec9", "data": [102, 10, 10, 1, 4, 1, 0, 0, 0, 1, 22]}, {"label": "Оффер/Отложен", "color": "#f5a623", "data": [41, 4, 2, 2, 2, 0, 0, 0, 0, 1, 7]}, {"label": "Продажи", "color": "#6ab04c", "data": [7, 1, 2, 0, 1, 0, 0, 2, 0, 0, 2]}, {"label": "НДЗ", "color": "#fdcb6e", "data": [136, 18, 18, 8, 5, 4, 3, 4, 3, 2, 71]}, {"label": "Потеряно", "color": "#636e72", "data": [129, 12, 10, 3, 7, 1, 2, 0, 0, 0, 66]}], "15.06–21.06": [{"label": "Входящие/Новые", "color": "#74b9ff", "data": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"label": "В работе", "color": "#00cec9", "data": [70, 7, 8, 2, 3, 0, 3, 2, 0, 0, 26]}, {"label": "Оффер/Отложен", "color": "#f5a623", "data": [8, 0, 1, 0, 1, 0, 1, 0, 1, 1, 5]}, {"label": "Продажи", "color": "#6ab04c", "data": [1, 0, 2, 0, 0, 0, 1, 0, 0, 0, 0]}, {"label": "НДЗ", "color": "#fdcb6e", "data": [135, 8, 26, 8, 9, 7, 5, 5, 3, 3, 86]}, {"label": "Потеряно", "color": "#636e72", "data": [71, 10, 10, 0, 3, 4, 0, 0, 0, 2, 61]}], "22.06–28.06": [{"label": "Входящие/Новые", "color": "#74b9ff", "data": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"label": "В работе", "color": "#00cec9", "data": [40, 12, 4, 4, 3, 2, 3, 1, 0, 3, 18]}, {"label": "Оффер/Отложен", "color": "#f5a623", "data": [6, 0, 0, 0, 0, 0, 0, 0, 1, 0, 4]}, {"label": "Продажи", "color": "#6ab04c", "data": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]}, {"label": "НДЗ", "color": "#fdcb6e", "data": [130, 26, 17, 17, 4, 2, 1, 5, 3, 2, 82]}, {"label": "Потеряно", "color": "#636e72", "data": [58, 12, 4, 5, 1, 3, 4, 1, 2, 0, 45]}], "29.06–05.07": [{"label": "Входящие/Новые", "color": "#74b9ff", "data": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"label": "В работе", "color": "#00cec9", "data": [3, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0]}, {"label": "Оффер/Отложен", "color": "#f5a623", "data": [2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"label": "Продажи", "color": "#6ab04c", "data": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"label": "НДЗ", "color": "#fdcb6e", "data": [11, 1, 0, 0, 0, 0, 0, 0, 0, 0, 5]}, {"label": "Потеряно", "color": "#636e72", "data": [9, 1, 2, 0, 0, 0, 0, 0, 0, 0, 16]}]}, "cstat_by_week_web": {"Все время": [{"label": "Входящие/Новые", "color": "#74b9ff", "data": [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"label": "В работе", "color": "#00cec9", "data": [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]}, {"label": "Оффер/Отложен", "color": "#f5a623", "data": [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"label": "Продажи", "color": "#6ab04c", "data": [14, 1, 4, 0, 0, 1, 0, 0, 0, 0, 6]}, {"label": "НДЗ", "color": "#fdcb6e", "data": [0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1]}, {"label": "Потеряно", "color": "#636e72", "data": [4, 1, 1, 0, 0, 0, 0, 0, 0, 0, 30]}], "01.06–07.06": [{"label": "Входящие/Новые", "color": "#74b9ff", "data": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"label": "В работе", "color": "#00cec9", "data": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"label": "Оффер/Отложен", "color": "#f5a623", "data": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"label": "Продажи", "color": "#6ab04c", "data": [1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1]}, {"label": "НДЗ", "color": "#fdcb6e", "data": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"label": "Потеряно", "color": "#636e72", "data": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}], "06.07–12.07": [{"label": "Входящие/Новые", "color": "#74b9ff", "data": [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"label": "В работе", "color": "#00cec9", "data": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"label": "Оффер/Отложен", "color": "#f5a623", "data": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"label": "Продажи", "color": "#6ab04c", "data": [0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 2]}, {"label": "НДЗ", "color": "#fdcb6e", "data": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"label": "Потеряно", "color": "#636e72", "data": [2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 5]}], "08.06–14.06": [{"label": "Входящие/Новые", "color": "#74b9ff", "data": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"label": "В работе", "color": "#00cec9", "data": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"label": "Оффер/Отложен", "color": "#f5a623", "data": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"label": "Продажи", "color": "#6ab04c", "data": [2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"label": "НДЗ", "color": "#fdcb6e", "data": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"label": "Потеряно", "color": "#636e72", "data": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}], "15.06–21.06": [{"label": "Входящие/Новые", "color": "#74b9ff", "data": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"label": "В работе", "color": "#00cec9", "data": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"label": "Оффер/Отложен", "color": "#f5a623", "data": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"label": "Продажи", "color": "#6ab04c", "data": [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"label": "НДЗ", "color": "#fdcb6e", "data": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"label": "Потеряно", "color": "#636e72", "data": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}], "22.06–28.06": [{"label": "Входящие/Новые", "color": "#74b9ff", "data": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"label": "В работе", "color": "#00cec9", "data": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"label": "Оффер/Отложен", "color": "#f5a623", "data": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"label": "Продажи", "color": "#6ab04c", "data": [0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1]}, {"label": "НДЗ", "color": "#fdcb6e", "data": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"label": "Потеряно", "color": "#636e72", "data": [2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}], "29.06–05.07": [{"label": "Входящие/Новые", "color": "#74b9ff", "data": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"label": "В работе", "color": "#00cec9", "data": [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]}, {"label": "Оффер/Отложен", "color": "#f5a623", "data": [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"label": "Продажи", "color": "#6ab04c", "data": [9, 1, 1, 0, 0, 1, 0, 0, 0, 0, 2]}, {"label": "НДЗ", "color": "#fdcb6e", "data": [0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1]}, {"label": "Потеряно", "color": "#636e72", "data": [0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 25]}]}, "mgr_country_cols": ["Россия", "Беларусь", "Украина", "Казахстан", "Германия", "США", "Польша", "Латвия", "Литва", "Грузия", "Прочие"], "mgr_country_data": {"12377210": {"Россия": 171, "Беларусь": 17, "Украина": 15, "Казахстан": 7, "Германия": 9, "США": 3, "Польша": 3, "Латвия": 3, "Литва": 4, "Грузия": 0, "Прочие": 106}, "11176694": {"Россия": 149, "Беларусь": 24, "Украина": 24, "Казахстан": 3, "Германия": 11, "США": 1, "Польша": 2, "Латвия": 2, "Литва": 3, "Грузия": 2, "Прочие": 77}, "6461602": {"Россия": 66, "Беларусь": 6, "Украина": 6, "Казахстан": 0, "Германия": 3, "США": 1, "Польша": 1, "Латвия": 1, "Литва": 0, "Грузия": 1, "Прочие": 22}, "11181290": {"Россия": 161, "Беларусь": 14, "Украина": 10, "Казахстан": 5, "Германия": 4, "США": 2, "Польша": 3, "Латвия": 4, "Литва": 0, "Грузия": 1, "Прочие": 78}, "9948090": {"Россия": 147, "Беларусь": 18, "Украина": 14, "Казахстан": 14, "Германия": 4, "США": 2, "Польша": 2, "Латвия": 2, "Литва": 2, "Грузия": 0, "Прочие": 66}, "11068965": {"Россия": 9, "Беларусь": 3, "Украина": 1, "Казахстан": 1, "Германия": 0, "США": 0, "Польша": 0, "Латвия": 0, "Литва": 0, "Грузия": 0, "Прочие": 2}, "10293970": {"Россия": 143, "Беларусь": 21, "Украина": 18, "Казахстан": 2, "Германия": 5, "США": 3, "Польша": 2, "Латвия": 3, "Литва": 0, "Грузия": 2, "Прочие": 71}, "12738086": {"Россия": 111, "Беларусь": 17, "Украина": 24, "Казахстан": 7, "Германия": 4, "США": 4, "Польша": 11, "Латвия": 5, "Литва": 3, "Грузия": 4, "Прочие": 89}, "11356530": {"Россия": 88, "Беларусь": 9, "Украина": 10, "Казахстан": 8, "Германия": 4, "США": 5, "Польша": 3, "Латвия": 1, "Литва": 0, "Грузия": 5, "Прочие": 51}, "7728454": {"Россия": 70, "Беларусь": 16, "Украина": 19, "Казахстан": 4, "Германия": 1, "США": 3, "Польша": 0, "Латвия": 4, "Литва": 5, "Грузия": 2, "Прочие": 48}, "6976552": {"Россия": 0, "Беларусь": 0, "Украина": 0, "Казахстан": 0, "Германия": 0, "США": 0, "Польша": 0, "Латвия": 0, "Литва": 0, "Грузия": 0, "Прочие": 0}, "9596454": {"Россия": 1, "Беларусь": 0, "Украина": 1, "Казахстан": 0, "Германия": 0, "США": 0, "Польша": 0, "Латвия": 0, "Литва": 0, "Грузия": 0, "Прочие": 1}}, "mgr_country_by_week": {"Все время": {"12377210": {"Россия": 171, "Беларусь": 17, "Украина": 15, "Казахстан": 7, "Германия": 9, "США": 3, "Польша": 3, "Латвия": 3, "Литва": 4, "Грузия": 0, "Прочие": 106}, "11176694": {"Россия": 149, "Беларусь": 24, "Украина": 24, "Казахстан": 3, "Германия": 11, "США": 1, "Польша": 2, "Латвия": 2, "Литва": 3, "Грузия": 2, "Прочие": 77}, "6461602": {"Россия": 66, "Беларусь": 6, "Украина": 6, "Казахстан": 0, "Германия": 3, "США": 1, "Польша": 1, "Латвия": 1, "Литва": 0, "Грузия": 1, "Прочие": 22}, "11181290": {"Россия": 161, "Беларусь": 14, "Украина": 10, "Казахстан": 5, "Германия": 4, "США": 2, "Польша": 3, "Латвия": 4, "Литва": 0, "Грузия": 1, "Прочие": 78}, "9948090": {"Россия": 147, "Беларусь": 18, "Украина": 14, "Казахстан": 14, "Германия": 4, "США": 2, "Польша": 2, "Латвия": 2, "Литва": 2, "Грузия": 0, "Прочие": 66}, "11068965": {"Россия": 9, "Беларусь": 3, "Украина": 1, "Казахстан": 1, "Германия": 0, "США": 0, "Польша": 0, "Латвия": 0, "Литва": 0, "Грузия": 0, "Прочие": 2}, "10293970": {"Россия": 143, "Беларусь": 21, "Украина": 18, "Казахстан": 2, "Германия": 5, "США": 3, "Польша": 2, "Латвия": 3, "Литва": 0, "Грузия": 2, "Прочие": 71}, "12738086": {"Россия": 111, "Беларусь": 17, "Украина": 24, "Казахстан": 7, "Германия": 4, "США": 4, "Польша": 11, "Латвия": 5, "Литва": 3, "Грузия": 4, "Прочие": 89}, "11356530": {"Россия": 88, "Беларусь": 9, "Украина": 10, "Казахстан": 8, "Германия": 4, "США": 5, "Польша": 3, "Латвия": 1, "Литва": 0, "Грузия": 5, "Прочие": 51}, "7728454": {"Россия": 70, "Беларусь": 16, "Украина": 19, "Казахстан": 4, "Германия": 1, "США": 3, "Польша": 0, "Латвия": 4, "Литва": 5, "Грузия": 2, "Прочие": 48}, "6976552": {"Россия": 0, "Беларусь": 0, "Украина": 0, "Казахстан": 0, "Германия": 0, "США": 0, "Польша": 0, "Латвия": 0, "Литва": 0, "Грузия": 0, "Прочие": 0}, "9596454": {"Россия": 1, "Беларусь": 0, "Украина": 1, "Казахстан": 0, "Германия": 0, "США": 0, "Польша": 0, "Латвия": 0, "Литва": 0, "Грузия": 0, "Прочие": 1}}, "01.06–07.06": {"12377210": {"Россия": 30, "Беларусь": 5, "Украина": 1, "Казахстан": 0, "Германия": 2, "США": 0, "Польша": 0, "Латвия": 1, "Литва": 1, "Грузия": 0, "Прочие": 10}, "11176694": {"Россия": 24, "Беларусь": 3, "Украина": 3, "Казахстан": 0, "Германия": 1, "США": 1, "Польша": 1, "Латвия": 1, "Литва": 1, "Грузия": 1, "Прочие": 12}, "6461602": {"Россия": 14, "Беларусь": 3, "Украина": 1, "Казахстан": 0, "Германия": 0, "США": 0, "Польша": 0, "Латвия": 0, "Литва": 0, "Грузия": 0, "Прочие": 5}, "11181290": {"Россия": 25, "Беларусь": 3, "Украина": 4, "Казахстан": 0, "Германия": 0, "США": 0, "Польша": 0, "Латвия": 0, "Литва": 0, "Грузия": 1, "Прочие": 14}, "9948090": {"Россия": 11, "Беларусь": 2, "Украина": 0, "Казахстан": 0, "Германия": 0, "США": 0, "Польша": 0, "Латвия": 1, "Литва": 0, "Грузия": 0, "Прочие": 5}, "11068965": {"Россия": 2, "Беларусь": 0, "Украина": 1, "Казахстан": 0, "Германия": 0, "США": 0, "Польша": 0, "Латвия": 0, "Литва": 0, "Грузия": 0, "Прочие": 0}, "10293970": {"Россия": 8, "Беларусь": 1, "Украина": 1, "Казахстан": 0, "Германия": 0, "США": 1, "Польша": 1, "Латвия": 0, "Литва": 0, "Грузия": 0, "Прочие": 4}, "12738086": {"Россия": 18, "Беларусь": 5, "Украина": 5, "Казахстан": 1, "Германия": 0, "США": 0, "Польша": 2, "Латвия": 2, "Литва": 1, "Грузия": 0, "Прочие": 11}, "11356530": {"Россия": 11, "Беларусь": 0, "Украина": 1, "Казахстан": 0, "Германия": 0, "США": 0, "Польша": 0, "Латвия": 0, "Литва": 0, "Грузия": 0, "Прочие": 5}, "7728454": {"Россия": 1, "Беларусь": 0, "Украина": 2, "Казахстан": 0, "Германия": 0, "США": 0, "Польша": 0, "Латвия": 0, "Литва": 0, "Грузия": 0, "Прочие": 3}, "6976552": {"Россия": 0, "Беларусь": 0, "Украина": 0, "Казахстан": 0, "Германия": 0, "США": 0, "Польша": 0, "Латвия": 0, "Литва": 0, "Грузия": 0, "Прочие": 0}, "9596454": {"Россия": 0, "Беларусь": 0, "Украина": 1, "Казахстан": 0, "Германия": 0, "США": 0, "Польша": 0, "Латвия": 0, "Литва": 0, "Грузия": 0, "Прочие": 0}}, "06.07–12.07": {"12377210": {"Россия": 4, "Беларусь": 0, "Украина": 0, "Казахстан": 0, "Германия": 0, "США": 0, "Польша": 0, "Латвия": 0, "Литва": 0, "Грузия": 0, "Прочие": 4}, "11176694": {"Россия": 3, "Беларусь": 0, "Украина": 1, "Казахстан": 0, "Германия": 0, "США": 0, "Польша": 0, "Латвия": 0, "Литва": 0, "Грузия": 0, "Прочие": 6}, "6461602": {"Россия": 1, "Беларусь": 0, "Украина": 0, "Казахстан": 0, "Германия": 0, "США": 0, "Польша": 0, "Латвия": 0, "Литва": 0, "Грузия": 0, "Прочие": 0}, "11181290": {"Россия": 2, "Беларусь": 0, "Украина": 0, "Казахстан": 0, "Германия": 0, "США": 0, "Польша": 0, "Латвия": 0, "Литва": 0, "Грузия": 0, "Прочие": 1}, "9948090": {"Россия": 0, "Беларусь": 0, "Украина": 0, "Казахстан": 0, "Германия": 0, "США": 0, "Польша": 0, "Латвия": 0, "Литва": 0, "Грузия": 0, "Прочие": 0}, "11068965": {"Россия": 0, "Беларусь": 0, "Украина": 0, "Казахстан": 0, "Германия": 0, "США": 0, "Польша": 0, "Латвия": 0, "Литва": 0, "Грузия": 0, "Прочие": 0}, "10293970": {"Россия": 0, "Беларусь": 0, "Украина": 0, "Казахстан": 0, "Германия": 0, "США": 0, "Польша": 0, "Латвия": 0, "Литва": 0, "Грузия": 0, "Прочие": 0}, "12738086": {"Россия": 0, "Беларусь": 0, "Украина": 0, "Казахстан": 0, "Германия": 0, "США": 0, "Польша": 0, "Латвия": 0, "Литва": 0, "Грузия": 0, "Прочие": 0}, "11356530": {"Россия": 0, "Беларусь": 0, "Украина": 0, "Казахстан": 0, "Германия": 0, "США": 0, "Польша": 0, "Латвия": 0, "Литва": 0, "Грузия": 0, "Прочие": 0}, "7728454": {"Россия": 0, "Беларусь": 0, "Украина": 0, "Казахстан": 0, "Германия": 0, "США": 0, "Польша": 0, "Латвия": 0, "Литва": 0, "Грузия": 0, "Прочие": 0}, "6976552": {"Россия": 0, "Беларусь": 0, "Украина": 0, "Казахстан": 0, "Германия": 0, "США": 0, "Польша": 0, "Латвия": 0, "Литва": 0, "Грузия": 0, "Прочие": 0}, "9596454": {"Россия": 0, "Беларусь": 0, "Украина": 0, "Казахстан": 0, "Германия": 0, "США": 0, "Польша": 0, "Латвия": 0, "Литва": 0, "Грузия": 0, "Прочие": 0}}, "08.06–14.06": {"12377210": {"Россия": 62, "Беларусь": 5, "Украина": 7, "Казахстан": 1, "Германия": 4, "США": 0, "Польша": 0, "Латвия": 2, "Литва": 0, "Грузия": 0, "Прочие": 29}, "11176694": {"Россия": 56, "Беларусь": 11, "Украина": 6, "Казахстан": 1, "Германия": 5, "США": 0, "Польша": 0, "Латвия": 1, "Литва": 0, "Грузия": 0, "Прочие": 20}, "6461602": {"Россия": 38, "Беларусь": 3, "Украина": 3, "Казахстан": 0, "Германия": 3, "США": 0, "Польша": 1, "Латвия": 0, "Литва": 0, "Грузия": 1, "Прочие": 9}, "11181290": {"Россия": 59, "Беларусь": 5, "Украина": 0, "Казахстан": 3, "Германия": 0, "США": 2, "Польша": 2, "Латвия": 1, "Литва": 0, "Грузия": 0, "Прочие": 21}, "9948090": {"Россия": 54, "Беларусь": 2, "Украина": 4, "Казахстан": 2, "Германия": 2, "США": 1, "Польша": 0, "Латвия": 0, "Литва": 1, "Грузия": 0, "Прочие": 12}, "11068965": {"Россия": 2, "Беларусь": 2, "Украина": 0, "Казахстан": 1, "Германия": 0, "США": 0, "Польша": 0, "Латвия": 0, "Литва": 0, "Грузия": 0, "Прочие": 0}, "10293970": {"Россия": 57, "Беларусь": 8, "Украина": 6, "Казахстан": 0, "Германия": 2, "США": 0, "Польша": 0, "Латвия": 1, "Литва": 0, "Грузия": 0, "Прочие": 16}, "12738086": {"Россия": 41, "Беларусь": 3, "Украина": 9, "Казахстан": 3, "Германия": 1, "США": 2, "Польша": 2, "Латвия": 1, "Литва": 2, "Грузия": 2, "Прочие": 35}, "11356530": {"Россия": 25, "Беларусь": 4, "Украина": 4, "Казахстан": 2, "Германия": 1, "США": 1, "Польша": 0, "Латвия": 0, "Литва": 0, "Грузия": 1, "Прочие": 10}, "7728454": {"Россия": 5, "Беларусь": 1, "Украина": 2, "Казахстан": 1, "Германия": 0, "США": 0, "Польша": 0, "Латвия": 0, "Литва": 0, "Грузия": 0, "Прочие": 4}, "6976552": {"Россия": 0, "Беларусь": 0, "Украина": 0, "Казахстан": 0, "Германия": 0, "США": 0, "Польша": 0, "Латвия": 0, "Литва": 0, "Грузия": 0, "Прочие": 0}, "9596454": {"Россия": 0, "Беларусь": 0, "Украина": 0, "Казахстан": 0, "Германия": 0, "США": 0, "Польша": 0, "Латвия": 0, "Литва": 0, "Грузия": 0, "Прочие": 0}}, "15.06–21.06": {"12377210": {"Россия": 47, "Беларусь": 3, "Украина": 5, "Казахстан": 1, "Германия": 3, "США": 3, "Польша": 0, "Латвия": 0, "Литва": 1, "Грузия": 0, "Прочие": 29}, "11176694": {"Россия": 36, "Беларусь": 5, "Украина": 9, "Казахстан": 1, "Германия": 5, "США": 0, "Польша": 0, "Латвия": 0, "Литва": 0, "Грузия": 1, "Прочие": 14}, "6461602": {"Россия": 8, "Беларусь": 0, "Украина": 2, "Казахстан": 0, "Германия": 0, "США": 1, "Польша": 0, "Латвия": 1, "Литва": 0, "Грузия": 0, "Прочие": 4}, "11181290": {"Россия": 40, "Беларусь": 2, "Украина": 4, "Казахстан": 0, "Германия": 4, "США": 0, "Польша": 0, "Латвия": 1, "Литва": 0, "Грузия": 0, "Прочие": 13}, "9948090": {"Россия": 28, "Беларусь": 3, "Украина": 4, "Казахстан": 5, "Германия": 1, "США": 0, "Польша": 2, "Латвия": 0, "Литва": 0, "Грузия": 0, "Прочие": 22}, "11068965": {"Россия": 3, "Беларусь": 1, "Украина": 0, "Казахстан": 0, "Германия": 0, "США": 0, "Польша": 0, "Латвия": 0, "Литва": 0, "Грузия": 0, "Прочие": 2}, "10293970": {"Россия": 34, "Беларусь": 3, "Украина": 7, "Казахстан": 0, "Германия": 1, "США": 1, "Польша": 1, "Латвия": 1, "Литва": 0, "Грузия": 1, "Прочие": 28}, "12738086": {"Россия": 38, "Беларусь": 6, "Украина": 8, "Казахстан": 0, "Германия": 0, "США": 2, "Польша": 6, "Латвия": 2, "Литва": 0, "Грузия": 1, "Прочие": 30}, "11356530": {"Россия": 31, "Беларусь": 0, "Украина": 3, "Казахстан": 3, "Германия": 2, "США": 3, "Польша": 1, "Латвия": 1, "Литва": 0, "Грузия": 3, "Прочие": 20}, "7728454": {"Россия": 15, "Беларусь": 1, "Украина": 5, "Казахстан": 0, "Германия": 0, "США": 0, "Польша": 0, "Латвия": 1, "Литва": 3, "Грузия": 0, "Прочие": 7}, "6976552": {"Россия": 0, "Беларусь": 0, "Украина": 0, "Казахстан": 0, "Германия": 0, "США": 0, "Польша": 0, "Латвия": 0, "Литва": 0, "Грузия": 0, "Прочие": 0}, "9596454": {"Россия": 0, "Беларусь": 0, "Украина": 0, "Казахстан": 0, "Германия": 0, "США": 0, "Польша": 0, "Латвия": 0, "Литва": 0, "Грузия": 0, "Прочие": 1}}, "22.06–28.06": {"12377210": {"Россия": 23, "Беларусь": 2, "Украина": 2, "Казахстан": 5, "Германия": 0, "США": 0, "Польша": 3, "Латвия": 0, "Литва": 2, "Грузия": 0, "Прочие": 15}, "11176694": {"Россия": 17, "Беларусь": 4, "Украина": 3, "Казахстан": 1, "Германия": 0, "США": 0, "Польша": 1, "Латвия": 0, "Литва": 1, "Грузия": 0, "Прочие": 18}, "6461602": {"Россия": 0, "Беларусь": 0, "Украина": 0, "Казахстан": 0, "Германия": 0, "США": 0, "Польша": 0, "Латвия": 0, "Литва": 0, "Грузия": 0, "Прочие": 0}, "11181290": {"Россия": 24, "Беларусь": 3, "Украина": 2, "Казахстан": 2, "Германия": 0, "США": 0, "Польша": 1, "Латвия": 2, "Литва": 0, "Грузия": 0, "Прочие": 16}, "9948090": {"Россия": 49, "Беларусь": 11, "Украина": 5, "Казахстан": 7, "Германия": 1, "США": 0, "Польша": 0, "Латвия": 1, "Литва": 1, "Грузия": 0, "Прочие": 20}, "11068965": {"Россия": 2, "Беларусь": 0, "Украина": 0, "Казахстан": 0, "Германия": 0, "США": 0, "Польша": 0, "Латвия": 0, "Литва": 0, "Грузия": 0, "Прочие": 0}, "10293970": {"Россия": 39, "Беларусь": 9, "Украина": 3, "Казахстан": 2, "Германия": 2, "США": 1, "Польша": 0, "Латвия": 1, "Литва": 0, "Грузия": 1, "Прочие": 21}, "12738086": {"Россия": 10, "Беларусь": 3, "Украина": 1, "Казахстан": 3, "Германия": 3, "США": 0, "Польша": 1, "Латвия": 0, "Литва": 0, "Грузия": 1, "Прочие": 13}, "11356530": {"Россия": 13, "Беларусь": 4, "Украина": 1, "Казахстан": 3, "Германия": 1, "США": 1, "Польша": 2, "Латвия": 0, "Литва": 0, "Грузия": 1, "Прочие": 11}, "7728454": {"Россия": 47, "Беларусь": 14, "Украина": 10, "Казахстан": 3, "Германия": 1, "США": 3, "Польша": 0, "Латвия": 3, "Литва": 2, "Грузия": 2, "Прочие": 31}, "6976552": {"Россия": 0, "Беларусь": 0, "Украина": 0, "Казахстан": 0, "Германия": 0, "США": 0, "Польша": 0, "Латвия": 0, "Литва": 0, "Грузия": 0, "Прочие": 0}, "9596454": {"Россия": 0, "Беларусь": 0, "Украина": 0, "Казахстан": 0, "Германия": 0, "США": 0, "Польша": 0, "Латвия": 0, "Литва": 0, "Грузия": 0, "Прочие": 0}}, "29.06–05.07": {"12377210": {"Россия": 3, "Беларусь": 1, "Украина": 0, "Казахстан": 0, "Германия": 0, "США": 0, "Польша": 0, "Латвия": 0, "Литва": 0, "Грузия": 0, "Прочие": 16}, "11176694": {"Россия": 5, "Беларусь": 1, "Украина": 1, "Казахстан": 0, "Германия": 0, "США": 0, "Польша": 0, "Латвия": 0, "Литва": 0, "Грузия": 0, "Прочие": 3}, "6461602": {"Россия": 3, "Беларусь": 0, "Украина": 0, "Казахстан": 0, "Германия": 0, "США": 0, "Польша": 0, "Латвия": 0, "Литва": 0, "Грузия": 0, "Прочие": 4}, "11181290": {"Россия": 9, "Беларусь": 1, "Украина": 0, "Казахстан": 0, "Германия": 0, "США": 0, "Польша": 0, "Латвия": 0, "Литва": 0, "Грузия": 0, "Прочие": 12}, "9948090": {"Россия": 5, "Беларусь": 0, "Украина": 1, "Казахстан": 0, "Германия": 0, "США": 1, "Польша": 0, "Латвия": 0, "Литва": 0, "Грузия": 0, "Прочие": 7}, "11068965": {"Россия": 0, "Беларусь": 0, "Украина": 0, "Казахстан": 0, "Германия": 0, "США": 0, "Польша": 0, "Латвия": 0, "Литва": 0, "Грузия": 0, "Прочие": 0}, "10293970": {"Россия": 4, "Беларусь": 0, "Украина": 1, "Казахстан": 0, "Германия": 0, "США": 0, "Польша": 0, "Латвия": 0, "Литва": 0, "Грузия": 0, "Прочие": 2}, "12738086": {"Россия": 2, "Беларусь": 0, "Украина": 1, "Казахстан": 0, "Германия": 0, "США": 0, "Польша": 0, "Латвия": 0, "Литва": 0, "Грузия": 0, "Прочие": 0}, "11356530": {"Россия": 3, "Беларусь": 1, "Украина": 1, "Казахстан": 0, "Германия": 0, "США": 0, "Польша": 0, "Латвия": 0, "Литва": 0, "Грузия": 0, "Прочие": 2}, "7728454": {"Россия": 2, "Беларусь": 0, "Украина": 0, "Казахстан": 0, "Германия": 0, "США": 0, "Польша": 0, "Латвия": 0, "Литва": 0, "Грузия": 0, "Прочие": 3}, "6976552": {"Россия": 0, "Беларусь": 0, "Украина": 0, "Казахстан": 0, "Германия": 0, "США": 0, "Польша": 0, "Латвия": 0, "Литва": 0, "Грузия": 0, "Прочие": 0}, "9596454": {"Россия": 0, "Беларусь": 0, "Украина": 0, "Казахстан": 0, "Германия": 0, "США": 0, "Польша": 0, "Латвия": 0, "Литва": 0, "Грузия": 0, "Прочие": 0}}}, "mgr_country_data_prereg": {"12377210": {"Россия": 168, "Беларусь": 17, "Украина": 15, "Казахстан": 7, "Германия": 9, "США": 3, "Польша": 3, "Латвия": 3, "Литва": 4, "Грузия": 0, "Прочие": 91}, "11176694": {"Россия": 145, "Беларусь": 24, "Украина": 21, "Казахстан": 3, "Германия": 11, "США": 1, "Польша": 2, "Латвия": 2, "Литва": 3, "Грузия": 2, "Прочие": 75}, "6461602": {"Россия": 63, "Беларусь": 6, "Украина": 6, "Казахстан": 0, "Германия": 3, "США": 1, "Польша": 1, "Латвия": 1, "Литва": 0, "Грузия": 1, "Прочие": 18}, "11181290": {"Россия": 160, "Беларусь": 13, "Украина": 9, "Казахстан": 5, "Германия": 4, "США": 2, "Польша": 3, "Латвия": 4, "Литва": 0, "Грузия": 1, "Прочие": 72}, "9948090": {"Россия": 146, "Беларусь": 18, "Украина": 13, "Казахстан": 14, "Германия": 4, "США": 1, "Польша": 2, "Латвия": 2, "Литва": 2, "Грузия": 0, "Прочие": 63}, "11068965": {"Россия": 9, "Беларусь": 3, "Украина": 1, "Казахстан": 1, "Германия": 0, "США": 0, "Польша": 0, "Латвия": 0, "Литва": 0, "Грузия": 0, "Прочие": 2}, "10293970": {"Россия": 141, "Беларусь": 21, "Украина": 18, "Казахстан": 2, "Германия": 5, "США": 3, "Польша": 2, "Латвия": 3, "Литва": 0, "Грузия": 2, "Прочие": 70}, "12738086": {"Россия": 109, "Беларусь": 17, "Украина": 23, "Казахстан": 7, "Германия": 4, "США": 4, "Польша": 11, "Латвия": 5, "Литва": 3, "Грузия": 4, "Прочие": 89}, "11356530": {"Россия": 87, "Беларусь": 9, "Украина": 10, "Казахстан": 8, "Германия": 4, "США": 5, "Польша": 3, "Латвия": 1, "Литва": 0, "Грузия": 5, "Прочие": 49}, "7728454": {"Россия": 70, "Беларусь": 16, "Украина": 19, "Казахстан": 4, "Германия": 1, "США": 3, "Польша": 0, "Латвия": 4, "Литва": 5, "Грузия": 2, "Прочие": 46}, "6976552": {"Россия": 0, "Беларусь": 0, "Украина": 0, "Казахстан": 0, "Германия": 0, "США": 0, "Польша": 0, "Латвия": 0, "Литва": 0, "Грузия": 0, "Прочие": 0}, "9596454": {"Россия": 1, "Беларусь": 0, "Украина": 1, "Казахстан": 0, "Германия": 0, "США": 0, "Польша": 0, "Латвия": 0, "Литва": 0, "Грузия": 0, "Прочие": 1}}, "mgr_country_data_web": {"12377210": {"Россия": 3, "Беларусь": 0, "Украина": 0, "Казахстан": 0, "Германия": 0, "США": 0, "Польша": 0, "Латвия": 0, "Литва": 0, "Грузия": 0, "Прочие": 15}, "11176694": {"Россия": 4, "Беларусь": 0, "Украина": 3, "Казахстан": 0, "Германия": 0, "США": 0, "Польша": 0, "Латвия": 0, "Литва": 0, "Грузия": 0, "Прочие": 2}, "6461602": {"Россия": 3, "Беларусь": 0, "Украина": 0, "Казахстан": 0, "Германия": 0, "США": 0, "Польша": 0, "Латвия": 0, "Литва": 0, "Грузия": 0, "Прочие": 4}, "11181290": {"Россия": 1, "Беларусь": 1, "Украина": 1, "Казахстан": 0, "Германия": 0, "США": 0, "Польша": 0, "Латвия": 0, "Литва": 0, "Грузия": 0, "Прочие": 6}, "9948090": {"Россия": 1, "Беларусь": 0, "Украина": 1, "Казахстан": 0, "Германия": 0, "США": 1, "Польша": 0, "Латвия": 0, "Литва": 0, "Грузия": 0, "Прочие": 3}, "11068965": {"Россия": 0, "Беларусь": 0, "Украина": 0, "Казахстан": 0, "Германия": 0, "США": 0, "Польша": 0, "Латвия": 0, "Литва": 0, "Грузия": 0, "Прочие": 0}, "10293970": {"Россия": 2, "Беларусь": 0, "Украина": 0, "Казахстан": 0, "Германия": 0, "США": 0, "Польша": 0, "Латвия": 0, "Литва": 0, "Грузия": 0, "Прочие": 1}, "12738086": {"Россия": 2, "Беларусь": 0, "Украина": 1, "Казахстан": 0, "Германия": 0, "США": 0, "Польша": 0, "Латвия": 0, "Литва": 0, "Грузия": 0, "Прочие": 0}, "11356530": {"Россия": 1, "Беларусь": 0, "Украина": 0, "Казахстан": 0, "Германия": 0, "США": 0, "Польша": 0, "Латвия": 0, "Литва": 0, "Грузия": 0, "Прочие": 2}, "7728454": {"Россия": 0, "Беларусь": 0, "Украина": 0, "Казахстан": 0, "Германия": 0, "США": 0, "Польша": 0, "Латвия": 0, "Литва": 0, "Грузия": 0, "Прочие": 2}, "6976552": {"Россия": 0, "Беларусь": 0, "Украина": 0, "Казахстан": 0, "Германия": 0, "США": 0, "Польша": 0, "Латвия": 0, "Литва": 0, "Грузия": 0, "Прочие": 0}, "9596454": {"Россия": 0, "Беларусь": 0, "Украина": 0, "Казахстан": 0, "Германия": 0, "США": 0, "Польша": 0, "Латвия": 0, "Литва": 0, "Грузия": 0, "Прочие": 0}}, "metrics_prereg": {"total": 2247, "in_work": 437, "ndz": 985, "offer": 41, "delayed": 80, "invoiced": 2, "sale_cnt": 26, "revenue": 5984473, "avg_price": 230172, "conv_pct": 1.16, "daily_labels": ["06.06", "07.06", "08.06", "09.06", "10.06", "11.06", "12.06", "13.06", "14.06", "15.06", "16.06", "17.06", "18.06", "19.06", "20.06", "21.06", "22.06", "23.06", "24.06", "25.06", "26.06", "27.06", "28.06", "29.06", "30.06", "01.07", "02.07", "03.07", "04.07", "05.07", "06.07", "07.07", "08.07", "09.07", "10.07"], "daily_values": [127, 163, 132, 55, 145, 88, 61, 56, 192, 191, 134, 85, 24, 74, 40, 51, 68, 65, 108, 86, 104, 77, 19, 10, 7, 7, 10, 4, 5, 9, 3, 3, 3, 4, 2], "cumulative_funnel": [{"name": "Новый лид", "count": 2245}, {"name": "Взято в работу", "count": 2245}, {"name": "Контакт установлен", "count": 428}, {"name": "Квалифицирован", "count": 104}, {"name": "Оффер озвучен", "count": 69}, {"name": "Выставлен счет", "count": 28}, {"name": "Продажи", "count": 26}], "revenue_mgr_ids": ["10293970", "11176694", "12377210", "11181290", "11068965", "6461602", "12738086", "11356530", "7728454"], "revenue_values": [1064800, 935825, 898700, 864540, 329800, 268459, 229900, 229900, 229900], "mgr_sales_count": {"12377210": 5, "11176694": 6, "6461602": 2, "11181290": 5, "9948090": 0, "11068965": 2, "10293970": 3, "12738086": 1, "11356530": 1, "7728454": 1, "6976552": 0, "9596454": 0}, "mgr_avg_price": {"12377210": 179740, "11176694": 155971, "6461602": 134230, "11181290": 172908, "9948090": 0, "11068965": 164900, "10293970": 354933, "12738086": 229900, "11356530": 229900, "7728454": 229900, "6976552": 0, "9596454": 0}, "mgr_conv": {"12377210": {"inwork": 320, "sales": 5, "pct": 1.6}, "11176694": {"inwork": 289, "sales": 6, "pct": 2.1}, "6461602": {"inwork": 100, "sales": 2, "pct": 2.0}, "11181290": {"inwork": 272, "sales": 5, "pct": 1.8}, "9948090": {"inwork": 265, "sales": 0, "pct": 0.0}, "11068965": {"inwork": 16, "sales": 2, "pct": 12.5}, "10293970": {"inwork": 266, "sales": 3, "pct": 1.1}, "12738086": {"inwork": 276, "sales": 1, "pct": 0.4}, "11356530": {"inwork": 181, "sales": 1, "pct": 0.6}, "7728454": {"inwork": 170, "sales": 1, "pct": 0.6}, "6976552": {"inwork": 0, "sales": 0, "pct": 0}, "9596454": {"inwork": 3, "sales": 0, "pct": 0.0}}, "tariff_labels": ["PRO", "Базовый", "Infinity", "Метод AFK", "VIP", "Не решил ещё", "Мастер группа", "Bootcamp"], "tariff_values": [14, 5, 2, 1, 1, 1, 1, 1], "reason_labels": ["Не дозвонились", "Уже покупал Инфинити", "Не актуально", "Купил ранее этот курс", "Пришла другая заявка", "Нет бюджета", "Некорректные данные", "Оставил заказ", "Перестал отвечать", "Нецелевой", "У самого отлично получается", "Дорого", "Отложенный интерес", "Другое (написать в примечании)", "Интересуют бесплатные продукты", "Удалил контакты", "Сброс после приветствия", "Не оставил данные", "ВОЗВРАТ", "Купил Мастер-группу", "Уже покупал Ментор", "Купил другие курсы"], "reason_values": [190, 72, 51, 47, 47, 42, 33, 23, 18, 18, 15, 15, 12, 11, 11, 10, 6, 5, 2, 2, 1, 1], "mgr_detail": {"12377210": {"offer": 5, "contact": 20, "delayed": 23, "qualified": 6, "in_work": 5, "lost": 209, "sale": 5, "ndz": 47}, "11176694": {"contact": 46, "ndz": 126, "delayed": 13, "qualified": 4, "lost": 83, "offer": 8, "in_work": 3, "sale": 6}, "6461602": {"qualified": 14, "contact": 27, "sale": 2, "offer": 7, "ndz": 22, "lost": 21, "delayed": 7}, "11181290": {"in_work": 3, "ndz": 94, "contact": 23, "qualified": 8, "lost": 131, "sale": 5, "delayed": 7, "active": 1, "offer": 1}, "9948090": {"contact": 37, "ndz": 173, "lost": 39, "offer": 9, "in_work": 1, "delayed": 4, "qualified": 2}, "11068965": {"sale": 2, "lost": 14}, "10293970": {"contact": 79, "lost": 17, "ndz": 138, "sale": 6, "delayed": 24, "offer": 3}, "12738086": {"contact": 54, "delayed": 2, "offer": 6, "lost": 40, "ndz": 173, "sale": 1}, "11356530": {"contact": 8, "in_work": 66, "offer": 2, "ndz": 88, "qualified": 1, "lost": 15, "sale": 1}, "7728454": {"lost": 15, "ndz": 124, "contact": 30, "sale": 1}, "6976552": {}, "9596454": {"lost": 3}}, "mgr_viz": {"12377210": {"offer": 5, "contact": 20, "delayed": 23, "qualified": 6, "in_work": 5, "lost": 209, "sale": 5, "ndz": 47}, "11176694": {"contact": 46, "ndz": 126, "delayed": 13, "qualified": 4, "lost": 83, "offer": 8, "in_work": 3, "sale": 6}, "6461602": {"qualified": 14, "contact": 27, "sale": 2, "offer": 7, "ndz": 22, "lost": 21, "delayed": 7}, "11181290": {"in_work": 3, "ndz": 94, "contact": 23, "qualified": 8, "lost": 131, "sale": 5, "delayed": 7, "active": 1, "offer": 1}, "9948090": {"contact": 37, "ndz": 173, "lost": 39, "offer": 9, "in_work": 1, "delayed": 4, "qualified": 2}, "11068965": {"sale": 2, "lost": 14}, "10293970": {"contact": 79, "lost": 17, "ndz": 138, "sale": 6, "delayed": 24, "offer": 3}, "12738086": {"contact": 54, "delayed": 2, "offer": 6, "lost": 40, "ndz": 173, "sale": 1}, "11356530": {"contact": 8, "in_work": 66, "offer": 2, "ndz": 88, "qualified": 1, "lost": 15, "sale": 1}, "7728454": {"lost": 15, "ndz": 124, "contact": 30, "sale": 1}, "6976552": {}, "9596454": {"lost": 3}}, "capital_labels": ["$0-5,000", "до $5,000", "$5,000-50,000", "$50,000-100,000", "$100,000-500,000", "$500,000-1,000,000", "$1,000,000+", "Неизвестно", "Не указан"], "capital_values": [18, 722, 714, 173, 79, 10, 8, 9, 514], "ready_labels": ["Хочу_больше_узнать_про_программу", "Не ответил на вопрос", "Супер_Я_готов"], "ready_values": [1113, 732, 402]}, "metrics_web": {"total": 68, "in_work": 2, "ndz": 2, "offer": 1, "delayed": 0, "invoiced": 1, "sale_cnt": 25, "revenue": 4962119, "avg_price": 198485, "conv_pct": 36.76, "daily_labels": ["06.06", "07.06", "08.06", "09.06", "10.06", "11.06", "12.06", "13.06", "14.06", "15.06", "16.06", "17.06", "18.06", "19.06", "20.06", "21.06", "22.06", "23.06", "24.06", "25.06", "26.06", "27.06", "28.06", "29.06", "30.06", "01.07", "02.07", "03.07", "04.07", "05.07", "06.07", "07.07", "08.07", "09.07", "10.07"], "daily_values": [2, 1, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 3, 0, 27, 6, 1, 0, 2, 4, 5, 4, 2, 4, 0, 2], "cumulative_funnel": [{"name": "Новый лид", "count": 68}, {"name": "Взято в работу", "count": 67}, {"name": "Контакт установлен", "count": 28}, {"name": "Квалифицирован", "count": 27}, {"name": "Оффер озвучен", "count": 27}, {"name": "Выставлен счет", "count": 26}, {"name": "Продажи", "count": 25}], "revenue_mgr_ids": ["11176694", "12377210", "12738086", "10293970", "6461602", "9948090", "11356530", "11181290"], "revenue_values": [1009600, 707740, 646880, 569700, 454400, 234900, 229900, 224800], "mgr_sales_count": {"12377210": 4, "11176694": 5, "6461602": 3, "11181290": 3, "9948090": 2, "11068965": 0, "10293970": 3, "12738086": 3, "11356530": 1, "7728454": 0, "6976552": 0, "9596454": 0}, "mgr_avg_price": {"12377210": 176935, "11176694": 201920, "6461602": 151467, "11181290": 74933, "9948090": 117450, "11068965": 0, "10293970": 189900, "12738086": 215627, "11356530": 229900, "7728454": 0, "6976552": 0, "9596454": 0}, "mgr_conv": {"12377210": {"inwork": 18, "sales": 4, "pct": 22.2}, "11176694": {"inwork": 8, "sales": 5, "pct": 62.5}, "6461602": {"inwork": 7, "sales": 3, "pct": 42.9}, "11181290": {"inwork": 9, "sales": 3, "pct": 33.3}, "9948090": {"inwork": 6, "sales": 2, "pct": 33.3}, "11068965": {"inwork": 0, "sales": 0, "pct": 0}, "10293970": {"inwork": 3, "sales": 3, "pct": 100.0}, "12738086": {"inwork": 3, "sales": 3, "pct": 100.0}, "11356530": {"inwork": 3, "sales": 1, "pct": 33.3}, "7728454": {"inwork": 2, "sales": 0, "pct": 0.0}, "6976552": {"inwork": 0, "sales": 0, "pct": 0}, "9596454": {"inwork": 0, "sales": 0, "pct": 0}}, "tariff_labels": ["Базовый", "PRO", "VIP", "Предоплата", "Мастер группа"], "tariff_values": [9, 7, 6, 2, 1], "reason_labels": ["Оставил заказ", "Внес предоплату", "ВОЗВРАТ", "Сброс после приветствия", "Не дозвонились", "Некорректные данные"], "reason_values": [7, 3, 1, 1, 1, 1], "mgr_detail": {"12377210": {"sale": 4, "lost": 14}, "11176694": {"sale": 5, "om": 1, "lost": 2, "contact": 1}, "6461602": {"lost": 3, "sale": 3, "ndz": 1}, "11181290": {"sale": 3, "lost": 6}, "9948090": {"ndz": 1, "lost": 2, "offer": 1, "sale": 2}, "11068965": {}, "10293970": {"sale": 3}, "12738086": {"sale": 3}, "11356530": {"sale": 2, "in_work": 1}, "7728454": {"lost": 2}, "6976552": {}, "9596454": {}}, "mgr_viz": {"12377210": {"sale": 4, "lost": 14}, "11176694": {"sale": 5, "om": 1, "lost": 2, "contact": 1}, "6461602": {"lost": 3, "sale": 3, "ndz": 1}, "11181290": {"sale": 3, "lost": 6}, "9948090": {"ndz": 1, "lost": 2, "offer": 1, "sale": 2}, "11068965": {}, "10293970": {"sale": 3}, "12738086": {"sale": 3}, "11356530": {"sale": 2, "in_work": 1}, "7728454": {"lost": 2}, "6976552": {}, "9596454": {}}, "capital_labels": ["до $5,000", "$5,000-50,000", "$50,000-100,000", "$100,000-500,000", "Неизвестно", "Не указан"], "capital_values": [7, 36, 3, 9, 4, 9], "ready_labels": ["Хочу_больше_узнать_про_программу", "Не ответил на вопрос", "Супер_Я_готов"], "ready_values": [23, 33, 12]}, "tariff_labels": ["PRO", "Базовый", "VIP", "Мастер группа", "Infinity", "Предоплата", "Метод AFK", "Не решил ещё", "Bootcamp"], "tariff_values": [21, 14, 7, 2, 2, 2, 1, 1, 1], "revenue_mgr_ids": ["11176694", "10293970", "12377210", "11181290", "12738086", "6461602", "11356530", "11068965", "9948090", "7728454"], "revenue_values": [1945425, 1634500, 1606440, 1089340, 876780, 722859, 459800, 329800, 234900, 229900], "mgr_sales_count": {"12377210": 9, "11176694": 11, "6461602": 5, "11181290": 8, "9948090": 2, "11068965": 2, "10293970": 6, "12738086": 4, "11356530": 2, "7728454": 1, "6976552": 0, "9596454": 0}, "mgr_avg_price": {"12377210": 178493, "11176694": 176857, "6461602": 144572, "11181290": 136168, "9948090": 117450, "11068965": 164900, "10293970": 272417, "12738086": 219195, "11356530": 229900, "7728454": 229900, "6976552": 0, "9596454": 0}, "mgr_conv": {"12377210": {"inwork": 338, "sales": 9, "pct": 2.7}, "11176694": {"inwork": 297, "sales": 11, "pct": 3.7}, "6461602": {"inwork": 107, "sales": 5, "pct": 4.7}, "11181290": {"inwork": 281, "sales": 8, "pct": 2.8}, "9948090": {"inwork": 271, "sales": 2, "pct": 0.7}, "11068965": {"inwork": 16, "sales": 2, "pct": 12.5}, "10293970": {"inwork": 269, "sales": 6, "pct": 2.2}, "12738086": {"inwork": 279, "sales": 4, "pct": 1.4}, "11356530": {"inwork": 184, "sales": 2, "pct": 1.1}, "7728454": {"inwork": 172, "sales": 1, "pct": 0.6}, "6976552": {"inwork": 0, "sales": 0, "pct": 0}, "9596454": {"inwork": 3, "sales": 0, "pct": 0.0}}, "cumulative_funnel": [{"name": "Новый лид", "count": 2313}, {"name": "Взято в работу", "count": 2312}, {"name": "Контакт установлен", "count": 456}, {"name": "Квалифицирован", "count": 131}, {"name": "Оффер озвучен", "count": 96}, {"name": "Выставлен счет", "count": 54}, {"name": "Продажи", "count": 51}], "cohort_table": {"weeks": ["01.06–07.06", "08.06–14.06", "15.06–21.06", "22.06–28.06", "29.06–05.07", "06.07–12.07"], "immature": ["06.07–12.07", "29.06–05.07"], "stages": ["Новый лид", "Взято в работу", "Контакт установлен", "Квалифицирован", "Оффер озвучен", "Выставлен счет", "Продажи"], "counts": {"01.06–07.06": [295, 295, 83, 36, 23, 10, 10], "08.06–14.06": [729, 729, 182, 51, 37, 17, 16], "15.06–21.06": [600, 600, 107, 17, 10, 5, 4], "22.06–28.06": [530, 530, 60, 6, 5, 3, 3], "29.06–05.07": [97, 97, 16, 15, 15, 14, 13], "06.07–12.07": [27, 26, 3, 3, 3, 3, 3]}, "totals": [2313, 2312, 456, 131, 96, 54, 51]}, "cohort_table_prereg": {"weeks": ["01.06–07.06", "08.06–14.06", "15.06–21.06", "22.06–28.06", "29.06–05.07", "06.07–12.07"], "immature": ["06.07–12.07", "29.06–05.07"], "stages": ["Новый лид", "Взято в работу", "Контакт установлен", "Квалифицирован", "Оффер озвучен", "Выставлен счет", "Продажи"], "counts": {"01.06–07.06": [292, 292, 80, 33, 20, 7, 7], "08.06–14.06": [727, 727, 180, 49, 35, 15, 14], "15.06–21.06": [599, 599, 106, 16, 9, 4, 3], "22.06–28.06": [526, 526, 58, 4, 3, 1, 1], "29.06–05.07": [52, 52, 0, 0, 0, 0, 0], "06.07–12.07": [15, 15, 0, 0, 0, 0, 0]}, "totals": [2245, 2245, 428, 104, 69, 28, 26]}, "cohort_table_web": {"weeks": ["01.06–07.06", "08.06–14.06", "15.06–21.06", "22.06–28.06", "29.06–05.07", "06.07–12.07"], "immature": ["06.07–12.07", "29.06–05.07"], "stages": ["Новый лид", "Взято в работу", "Контакт установлен", "Квалифицирован", "Оффер озвучен", "Выставлен счет", "Продажи"], "counts": {"01.06–07.06": [3, 3, 3, 3, 3, 3, 3], "08.06–14.06": [2, 2, 2, 2, 2, 2, 2], "15.06–21.06": [1, 1, 1, 1, 1, 1, 1], "22.06–28.06": [4, 4, 2, 2, 2, 2, 2], "29.06–05.07": [45, 45, 16, 15, 15, 14, 13], "06.07–12.07": [12, 11, 3, 3, 3, 3, 3]}, "totals": [68, 67, 28, 27, 27, 26, 25]}, "prereg_total": 2247, "prereg_converted": 0, "prereg_disqualified": 42, "prereg_real_lost": 632, "web_order_total": 56, "web_prepay_total": 12, "web_total_sales": 25, "web_order_sale_count": 20, "web_order_sale_revenue": 3848120, "web_prepay_sale_count": 5, "web_prepay_sale_revenue": 459700, "prereg_sale_count": 26, "prereg_sale_revenue": 5051824, "avg_price_no_prepay": 233042};
+
+// ── Global source toggle ───────────────────────────────────────────────────
+window.SRC = "all";
+window.SRC_UPDATERS = [];
+(function(){
+  const wrap = document.getElementById("globalSrcToggle");
+  const SRCS = {all:"Все источники", prereg:"Предзапись", web:"Вебинар 06.26"};
+  const btnStyle = (a) =>
+    "padding:6px 16px;border-radius:6px;border:none;cursor:pointer;font-size:13px;font-weight:600;transition:all 0.15s;" +
+    (a ? "background:#4f8ef7;color:#fff;box-shadow:0 2px 8px rgba(79,142,247,0.4);"
+       : "background:#243050;color:#a0aec0;");
+
+  function renderToggle() {
+    wrap.innerHTML = "";
+    Object.keys(SRCS).forEach(k => {
+      const btn = document.createElement("button");
+      btn.textContent = SRCS[k];
+      btn.style.cssText = btnStyle(k === window.SRC);
+      btn.onclick = function() {
+        window.SRC = k;
+        window.SRC_UPDATERS.forEach(fn => fn(k));
+        renderToggle();
+      };
+      wrap.appendChild(btn);
+    });
+  }
+  renderToggle();
+})();
+
+const VCOLORS = {incoming:"#74b9ff",new_lead:"#0984e3",om:"#6c5ce7",in_work:"#00cec9",contact:"#ffd32a",qualified:"#ff6b81",ndz:"#f5a623",offer:"#eb4d4b",delayed:"#a29bfe",sale:"#6ab04c",lost:"#eb4d4b"};
+const VLABELS = {incoming:"Входящие",new_lead:"Новый лид",om:"ОМ назначен",in_work:"Взято в работу",contact:"Контакт установлен",qualified:"Квалифицирован",ndz:"НДЗ",offer:"Оффер озвучен",delayed:"Отложен",sale:"Продажи+"};
+const VORDER  = ["incoming","new_lead","om","in_work","contact","qualified","ndz","offer","delayed","sale"];
+function fmt(n){return(n||0).toLocaleString("ru-RU")}
+const base = {
+  responsive:true,
+  plugins:{legend:{labels:{color:"#8b8fa8",font:{size:12}}},
+            tooltip:{callbacks:{label:c=>` ${c.dataset.label}: ${fmt(c.raw)}`}}},
+  scales:{
+    x:{ticks:{color:"#8b8fa8"},grid:{color:"#2a2d3a"}},
+    y:{ticks:{color:"#8b8fa8"},grid:{color:"#2a2d3a"}}
+  }
+};
+
+// Daily leads chart
+(function(){
+  const srcD = {
+    all:    {labels: DATA.daily_labels,               values: DATA.daily_values},
+    prereg: {labels: DATA.metrics_prereg.daily_labels, values: DATA.metrics_prereg.daily_values},
+    web:    {labels: DATA.metrics_web.daily_labels,    values: DATA.metrics_web.daily_values},
+  };
+  const chart = new Chart(document.getElementById("dailyChart"),{
+    type:"bar",
+    data:{
+      labels:DATA.daily_labels,
+      datasets:[{
+        label:"Лидов за день",
+        data:DATA.daily_values,
+        backgroundColor:"#4f8ef7",
+        borderRadius:3,
+      }]
+    },
+    options:{...base,maintainAspectRatio:false,
+      plugins:{...base.plugins,legend:{display:false}},
+      scales:{
+        x:{...base.scales.x,ticks:{color:"#e8eaf0"}},
+        y:{...base.scales.y,beginAtZero:true}
+      }
+    }
+  });
+  window.SRC_UPDATERS.push(function(src) {
+    const d = srcD[src] || srcD.all;
+    chart.data.labels = d.labels;
+    chart.data.datasets[0].data = d.values;
+    chart.update();
+  });
+})();
+
+
+// Attributed funnel
+(function(){
+  const srcFunnels = {
+    all:    DATA.cumulative_funnel,
+    prereg: DATA.metrics_prereg.cumulative_funnel,
+    web:    DATA.metrics_web.cumulative_funnel,
+  };
+  let stages = DATA.cumulative_funnel;
+  let topVal = stages[0] ? stages[0].count : 1;
+  const palette = ["#4f8ef7","#00cec9","#ffd32a","#ff6b81","#7ed6df","#a29bfe","#6ab04c"];
+  const chart = new Chart(document.getElementById("cumFunnelChart"),{
+    type:"bar",
+    data:{
+      labels: stages.map(s=>s.name),
+      datasets:[{
+        label:"Лидов",
+        data: stages.map(s=>s.count),
+        backgroundColor: stages.map((_,i)=>palette[i]||"#4f8ef7"),
+        borderRadius:3,
+      }]
+    },
+    options:{
+      indexAxis:"y",
+      maintainAspectRatio:false,
+      plugins:{
+        legend:{display:false},
+        tooltip:{callbacks:{
+          label:function(c){
+            const i = c.dataIndex;
+            const pctTop = topVal ? Math.round(c.raw/topVal*100) : 0;
+            const prev = i > 0 ? stages[i-1].count : topVal;
+            const pctPrev = prev ? Math.round(c.raw/prev*100) : 0;
+            const lines = [` ${fmt(c.raw)} лидов (${pctTop}% от входящих)`];
+            if(i > 0) lines.push(` Конверсия с предыдущего: ${pctPrev}%`);
+            return lines;
+          }
+        }}
+      },
+      scales:{
+        x:{beginAtZero:true,ticks:{color:"#e8eaf0"},grid:{color:"#2a2d3a"}},
+        y:{ticks:{color:"#e8eaf0",font:{size:13}},grid:{color:"#2a2d3a"}}
+      }
+    }
+  });
+  window.SRC_UPDATERS.push(function(src) {
+    stages = (srcFunnels[src] || srcFunnels.all) || [];
+    topVal = stages[0] ? stages[0].count : 1;
+    chart.data.labels = stages.map(s=>s.name);
+    chart.data.datasets[0].data = stages.map(s=>s.count);
+    chart.data.datasets[0].backgroundColor = stages.map((_,i)=>palette[i]||"#4f8ef7");
+    chart.update();
+  });
+})();
+
+// Cohort conversion table — global toggle
+(function(){
+  const srcCohort = {
+    all:    DATA.cohort_table,
+    prereg: DATA.cohort_table_prereg,
+    web:    DATA.cohort_table_web,
+  };
+
+  function convColor(pct){
+    if(pct>=70) return '#6ab04c';
+    if(pct>=40) return '#f5a623';
+    return '#eb4d4b';
+  }
+  function barCell(cnt, prev, immature, bgStyle){
+    const pct = prev>0 ? Math.round(cnt/prev*100) : 0;
+    const col = convColor(pct);
+    const op  = immature ? 'opacity:0.55;' : '';
+    const bg  = bgStyle  ? bgStyle         : '';
+    return '<td style="padding:6px 12px;' + op + bg + '">'
+      + '<div style="display:flex;align-items:center;gap:7px">'
+      + '<div style="width:54px;height:7px;background:#2a2d3a;border-radius:3px;flex-shrink:0">'
+      + '<div style="width:' + pct + '%;height:100%;background:' + col + ';border-radius:3px"></div>'
+      + '</div>'
+      + '<span style="font-size:12px;color:' + col + ';font-weight:600">' + pct + '%</span>'
+      + '</div></td>';
+  }
+
+  function renderCohort(ct) {
+    if(!ct||!ct.weeks||!ct.weeks.length) return;
+    const immSet = new Set(ct.immature);
+    const weeks  = ct.weeks;
+    const stages = ct.stages;
+    const counts = ct.counts;
+    const totals = ct.totals;
+
+    let html = '<thead><tr><th style="min-width:180px">Этап / Конверсия</th>';
+    weeks.forEach(function(w){
+      const imm = immSet.has(w);
+      html += '<th style="text-align:center;' + (imm?'opacity:0.6':'') + '">' + w + (imm?' *':'') + '</th>';
+    });
+    html += '<th style="text-align:center;background:#1a2e0a">Итого</th></tr></thead><tbody>';
+
+    stages.forEach(function(stage, si){
+      html += '<tr style="border-top:2px solid #2a2d3a"><td style="font-weight:600;color:#e8eaf0;font-size:13px">' + stage + '</td>';
+      weeks.forEach(function(w){
+        const cnt = ((counts[w]||[])[si])||0;
+        const imm = immSet.has(w);
+        html += '<td class="num" style="' + (imm?'opacity:0.6':'') + '">' + fmt(cnt) + '</td>';
+      });
+      html += '<td class="num" style="font-weight:700;background:#1a1f0a">' + fmt(totals[si]) + '</td></tr>';
+      if(si > 0){
+        html += '<tr><td style="font-size:11px;color:#8b8fa8;padding-left:18px">&#8627; к предыдущему</td>';
+        weeks.forEach(function(w){
+          html += barCell(((counts[w]||[])[si])||0, ((counts[w]||[])[si-1])||0, immSet.has(w), '');
+        });
+        html += barCell(totals[si], totals[si-1], false, 'background:#1a1f0a;');
+        html += '</tr>';
+      }
+    });
+
+    html += '</tbody>';
+    document.getElementById('cohortTable').innerHTML = html;
+  }
+
+  renderCohort(DATA.cohort_table);
+  window.SRC_UPDATERS.push(function(src) {
+    renderCohort(srcCohort[src] || srcCohort.all);
+  });
+})();
+
+// Managers stacked
+const mgrIds=Object.keys(DATA.mgr_viz).sort((a,b)=>{
+  const ta=Object.values(DATA.mgr_viz[a]).reduce((s,v)=>s+v,0);
+  const tb=Object.values(DATA.mgr_viz[b]).reduce((s,v)=>s+v,0);
+  return tb-ta;
+});
+// Mgr chart — responds to global source toggle
+(function(){
+  const srcMaps = {all: DATA.mgr_viz, prereg: DATA.mgr_viz_prereg, web: DATA.mgr_viz_web};
+  const chart = new Chart(document.getElementById("mgrChart"), {
+    type:"bar",
+    data:{
+      labels:mgrIds.map(id=>DATA.managers[id]||id),
+      datasets:VORDER.map(g=>({
+        label:VLABELS[g],
+        data:mgrIds.map(id=>(DATA.mgr_viz[id]||{})[g]||0),
+        backgroundColor:VCOLORS[g],borderRadius:2
+      }))
+    },
+    options:{...base,maintainAspectRatio:false,scales:{
+      x:{...base.scales.x,stacked:true},
+      y:{...base.scales.y,stacked:true}
+    }}
+  });
+  window.SRC_UPDATERS.push(function(src) {
+    const viz = srcMaps[src] || srcMaps.all;
+    chart.data.datasets.forEach((ds, i) => {
+      ds.data = mgrIds.map(id => (viz[id]||{})[VORDER[i]]||0);
+    });
+    chart.update();
+  });
+})();
+
+// Overdue — global toggle
+(function(){
+  const srcOv = {
+    all:    DATA.overdue,
+    prereg: DATA.overdue_prereg,
+    web:    DATA.overdue_web,
+  };
+  function sortedIds(ov) {
+    return Object.keys(ov).filter(id=>DATA.managers[id]).sort((a,b)=>(ov[b]||0)-(ov[a]||0));
+  }
+  const ovIds = sortedIds(DATA.overdue);
+  const ovChart = new Chart(document.getElementById("overdueChart"),{
+    type:"bar",
+    data:{
+      labels:ovIds.map(id=>DATA.managers[id]||id),
+      datasets:[{label:"Просрочено",data:ovIds.map(id=>DATA.overdue[id]),backgroundColor:"#eb4d4b",borderRadius:3}]
+    },
+    options:{...base,maintainAspectRatio:false,plugins:{...base.plugins,legend:{display:false}}}
+  });
+  window.SRC_UPDATERS.push(function(src) {
+    const ov = srcOv[src] || srcOv.all;
+    const ids = sortedIds(ov);
+    ovChart.data.labels = ids.map(id=>DATA.managers[id]||id);
+    ovChart.data.datasets[0].data = ids.map(id=>ov[id]||0);
+    ovChart.update();
+  });
+})();
+
+// Daily capital grouped bar (% of day total)
+const capColors = {"$0-5,000":"#eb4d4b","до $5,000":"#f5a623","$5,000-50,000":"#ffd32a","$50,000-100,000":"#6ab04c","$100,000-500,000":"#00cec9","$500,000-1,000,000":"#4f8ef7","$1,000,000+":"#a29bfe","Неизвестно":"#636e72","Не указан":"#3d4045"};
+const dayTotals = DATA.daily_cap_labels.map((_,i)=>DATA.capital_labels.reduce((s,c)=>s+(DATA.daily_cap_data[c][i]||0),0));
+new Chart(document.getElementById("dailyCapChart"),{
+  type:"bar",
+  data:{
+    labels:DATA.daily_cap_labels,
+    datasets:DATA.capital_labels.map(cap=>{
+      return {
+        label:cap,
+        data:DATA.daily_cap_data[cap].map((v,i)=>dayTotals[i]?Math.round(v/dayTotals[i]*100):0),
+        backgroundColor:capColors[cap]||"#999",
+        borderWidth:0,
+        borderRadius:2,
+      };
+    })
+  },
+  options:{
+    maintainAspectRatio:false,
+    plugins:{
+      legend:{position:"top",labels:{color:"#e8eaf0",font:{size:11},boxWidth:12,padding:8}},
+      tooltip:{
+        mode:"index",intersect:false,
+        callbacks:{label:function(c){return ` ${c.dataset.label}: ${c.raw}%`}}
+      }
+    },
+    scales:{
+      x:{ticks:{color:"#e8eaf0"},grid:{color:"#1e2a3a"}},
+      y:{beginAtZero:true,max:100,ticks:{color:"#e8eaf0",callback:v=>v+"%"},grid:{color:"#1e2a3a"}}
+    }
+  }
+});
+
+// Conversion funnel chart: bar (взято в работу) + line (% конверсии) — global toggle
+(function(){
+  const srcConv = {
+    all:    {dates: DATA.conv_dates,        vzv: DATA.conv_vzv,        pct: DATA.conv_pct},
+    prereg: {dates: DATA.conv_dates_prereg, vzv: DATA.conv_vzv_prereg, pct: DATA.conv_pct_prereg},
+    web:    {dates: DATA.conv_dates_web,    vzv: DATA.conv_vzv_web,    pct: DATA.conv_pct_web},
+  };
+  const convFunnelChart = new Chart(document.getElementById("convFunnelChart"),{
+    data:{
+      labels:DATA.conv_dates,
+      datasets:[
+        {type:"bar",label:"Взято в работу",data:DATA.conv_vzv,
+          backgroundColor:"#00cec9",borderRadius:3,yAxisID:"yCount",order:2},
+        {type:"line",label:"% в Контакт установлен",data:DATA.conv_pct,
+          borderColor:"#ffd32a",backgroundColor:"transparent",
+          pointBackgroundColor:"#ffd32a",pointRadius:4,tension:0.3,
+          yAxisID:"yPct",order:1,datalabels:{display:true}}
+      ]
+    },
+    options:{
+      maintainAspectRatio:false,
+      interaction:{mode:"index",intersect:false},
+      plugins:{
+        legend:{labels:{color:"#e8eaf0"}},
+        tooltip:{callbacks:{label:function(c){
+          return c.dataset.yAxisID==="yPct"
+            ? ` ${c.dataset.label}: ${c.raw}%`
+            : ` ${c.dataset.label}: ${c.raw}`;
+        }}}
+      },
+      scales:{
+        x:{ticks:{color:"#e8eaf0",maxRotation:20,font:{size:11}},grid:{color:"#1e2a3a"}},
+        yCount:{position:"left",beginAtZero:true,ticks:{color:"#e8eaf0"},grid:{color:"#1e2a3a"},
+          title:{display:true,text:"Взято в работу",color:"#00cec9"}},
+        yPct:{position:"right",min:0,max:100,ticks:{color:"#ffd32a",callback:v=>v+"%"},
+          grid:{drawOnChartArea:false},title:{display:true,text:"Конверсия %",color:"#ffd32a"}}
+      }
+    }
+  });
+  window.SRC_UPDATERS.push(function(src) {
+    const d = srcConv[src] || srcConv.all;
+    convFunnelChart.data.labels = d.dates;
+    convFunnelChart.data.datasets[0].data = d.vzv;
+    convFunnelChart.data.datasets[1].data = d.pct;
+    convFunnelChart.update();
+  });
+})();
+
+// Capital doughnut
+// Capital doughnut — global toggle
+(function(){
+  const srcCap = {
+    all:    {labels: DATA.capital_labels,               values: DATA.capital_values},
+    prereg: {labels: DATA.metrics_prereg.capital_labels, values: DATA.metrics_prereg.capital_values},
+    web:    {labels: DATA.metrics_web.capital_labels,    values: DATA.metrics_web.capital_values},
+  };
+  const capBg = ["#eb4d4b","#f5a623","#ffd32a","#6ab04c","#00cec9","#4f8ef7","#a29bfe","#636e72","#3d4045"];
+  const capChart = new Chart(document.getElementById("capitalChart"),{
+    type:"doughnut",
+    data:{
+      labels:DATA.capital_labels,
+      datasets:[{data:DATA.capital_values,backgroundColor:capBg,borderWidth:0}]
+    },
+    options:{
+      maintainAspectRatio:false,
+      plugins:{
+        legend:{position:"right",labels:{color:"#e8eaf0",font:{size:12},boxWidth:14,padding:10}},
+        tooltip:{callbacks:{label:function(c){
+          const total=c.dataset.data.reduce((a,b)=>a+b,0);
+          return ` ${c.label}: ${c.raw} (${Math.round(c.raw/total*100)}%)`;
+        }}}
+      }
+    }
+  });
+  window.SRC_UPDATERS.push(function(src) {
+    const d = srcCap[src] || srcCap.all;
+    capChart.data.labels = d.labels || [];
+    capChart.data.datasets[0].data = d.values || [];
+    capChart.update();
+  });
+})();
+
+// Ready doughnut — global toggle
+(function(){
+  const srcReady = {
+    all:    {labels: DATA.ready_labels,               values: DATA.ready_values},
+    prereg: {labels: DATA.metrics_prereg.ready_labels, values: DATA.metrics_prereg.ready_values},
+    web:    {labels: DATA.metrics_web.ready_labels,    values: DATA.metrics_web.ready_values},
+  };
+  function readyLabel(l){
+    if(l==="Супер_Я_готов") return "Готов сейчас";
+    if(l==="Хочу_больше_узнать_про_программу") return "Хочу узнать больше";
+    if(l==="Не ответил на вопрос") return "Не ответил на вопрос";
+    return l;
+  }
+  function readyColor(l){
+    if(l==="Супер_Я_готов") return "#6ab04c";
+    if(l==="Хочу_больше_узнать_про_программу") return "#4f8ef7";
+    if(l==="Не ответил на вопрос") return "#3d4045";
+    return "#f5a623";
+  }
+  const readyChart = new Chart(document.getElementById("readyChart"),{
+    type:"doughnut",
+    data:{
+      labels:DATA.ready_labels.map(readyLabel),
+      datasets:[{data:DATA.ready_values,backgroundColor:DATA.ready_labels.map(readyColor),borderWidth:0}]
+    },
+    options:{
+      maintainAspectRatio:false,
+      plugins:{
+        legend:{position:"right",labels:{color:"#e8eaf0",font:{size:12},boxWidth:14,padding:10}},
+        tooltip:{callbacks:{label:function(c){
+          const total=c.dataset.data.reduce((a,b)=>a+b,0);
+          return ` ${c.label}: ${c.raw} (${Math.round(c.raw/total*100)}%)`;
+        }}}
+      }
+    }
+  });
+  window.SRC_UPDATERS.push(function(src) {
+    const d = srcReady[src] || srcReady.all;
+    readyChart.data.labels = (d.labels||[]).map(readyLabel);
+    readyChart.data.datasets[0].data = d.values || [];
+    readyChart.data.datasets[0].backgroundColor = (d.labels||[]).map(readyColor);
+    readyChart.update();
+  });
+})();
+
+// Revenue by manager
+// ── Revenue / Sales count / Conversion / Avg ticket per manager ── global toggle
+(function(){
+  const S = {
+    all:    { rev_ids: DATA.revenue_mgr_ids, rev_vals: DATA.revenue_values,
+               sc: DATA.mgr_sales_count, ap: DATA.mgr_avg_price, conv: DATA.mgr_conv },
+    prereg: { rev_ids: DATA.metrics_prereg.revenue_mgr_ids, rev_vals: DATA.metrics_prereg.revenue_values,
+               sc: DATA.metrics_prereg.mgr_sales_count, ap: DATA.metrics_prereg.mgr_avg_price,
+               conv: DATA.metrics_prereg.mgr_conv },
+    web:    { rev_ids: DATA.metrics_web.revenue_mgr_ids, rev_vals: DATA.metrics_web.revenue_values,
+               sc: DATA.metrics_web.mgr_sales_count, ap: DATA.metrics_web.mgr_avg_price,
+               conv: DATA.metrics_web.mgr_conv },
+  };
+
+  // Revenue chart
+  const revChart = new Chart(document.getElementById("revenueChart"),{
+    type:"bar",
+    data:{
+      labels:DATA.revenue_mgr_ids.map(id=>DATA.managers[id]||id),
+      datasets:[{label:"Выручка, ₽",data:DATA.revenue_values,backgroundColor:"#6ab04c",borderRadius:4}]
+    },
+    options:{
+      maintainAspectRatio:false,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){
+        return " " + c.raw.toLocaleString("ru-RU") + " ₽";
+      }}}},
+      scales:{
+        x:{ticks:{color:"#e8eaf0",maxRotation:30},grid:{color:"#1e2a3a"}},
+        y:{beginAtZero:true,ticks:{color:"#e8eaf0",callback:v=>v.toLocaleString("ru-RU")+" ₽"},grid:{color:"#1e2a3a"}}
+      }
+    }
+  });
+
+  // Sales count chart
+  const salesChart = (function(){
+    const sc = DATA.mgr_sales_count;
+    const ids = Object.keys(sc).filter(id=>DATA.managers[id]).sort((a,b)=>sc[b]-sc[a]);
+    if(!ids.length) return null;
+    return new Chart(document.getElementById('mgrSalesChart'),{
+      type:'bar',
+      data:{
+        labels:ids.map(id=>DATA.managers[id]),
+        datasets:[{label:'Продаж',data:ids.map(id=>sc[id]),backgroundColor:'#4f8ef7',borderRadius:4}]
+      },
+      options:{
+        maintainAspectRatio:false,
+        plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return ' '+c.raw+' продаж';}}}}
+        ,scales:{
+          x:{ticks:{color:'#e8eaf0',maxRotation:30},grid:{color:'#1e2a3a'}},
+          y:{beginAtZero:true,ticks:{color:'#e8eaf0',stepSize:1},grid:{color:'#1e2a3a'}}
+        }
+      }
+    });
+  })();
+
+  // Manager conversion chart
+  const convChart = (function(){
+    const conv = DATA.mgr_conv;
+    // Exclude fired manager whose leads were redistributed (inflates conversion)
+    const CONV_EXCL = new Set(Object.keys(DATA.managers).filter(id=>DATA.managers[id]==="Виолетта Осадчук"));
+    const ids = Object.keys(conv).filter(id=>DATA.managers[id]&&conv[id].inwork>0&&!CONV_EXCL.has(id)).sort((a,b)=>conv[b].pct-conv[a].pct);
+    if(!ids.length) return null;
+    return new Chart(document.getElementById('mgrConvChart'),{
+      type:'bar',
+      data:{
+        labels:ids.map(id=>DATA.managers[id]),
+        datasets:[{
+          label:'Конверсия %',
+          data:ids.map(id=>conv[id].pct),
+          backgroundColor:ids.map(id=>conv[id].pct>=5?'#6ab04c':conv[id].pct>=2?'#f5a623':'#eb4d4b'),
+          borderRadius:4
+        }]
+      },
+      options:{
+        indexAxis:'y',maintainAspectRatio:false,
+        plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){
+          const id=ids[c.dataIndex];const d=conv[id];
+          return ' '+c.raw+'% ('+d.sales+' продаж из '+d.inwork+' в работе)';
+        }}}},
+        scales:{
+          x:{beginAtZero:true,max:10,ticks:{color:'#e8eaf0',callback:v=>v+'%'},grid:{color:'#2a2d3a'}},
+          y:{ticks:{color:'#e8eaf0',font:{size:12}},grid:{color:'#2a2d3a'}}
+        }
+      }
+    });
+  })();
+
+  // Avg ticket chart
+  const avgChart = (function(){
+    const ap = DATA.mgr_avg_price;
+    const ids = Object.keys(ap).filter(id=>DATA.managers[id]&&ap[id]>0).sort((a,b)=>ap[b]-ap[a]);
+    if(!ids.length) return null;
+    return new Chart(document.getElementById('mgrAvgChart'),{
+      type:'bar',
+      data:{
+        labels:ids.map(id=>DATA.managers[id]),
+        datasets:[{label:'Средний чек, ₽',data:ids.map(id=>ap[id]),backgroundColor:'#a29bfe',borderRadius:4}]
+      },
+      options:{
+        maintainAspectRatio:false,
+        plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return ' '+c.raw.toLocaleString('ru-RU')+' ₽';}}}}
+        ,scales:{
+          x:{ticks:{color:'#e8eaf0',maxRotation:30},grid:{color:'#1e2a3a'}},
+          y:{beginAtZero:true,ticks:{color:'#e8eaf0',callback:v=>v.toLocaleString('ru-RU')+' ₽'},grid:{color:'#1e2a3a'}}
+        }
+      }
+    });
+  })();
+
+  function applyRevSrc(src) {
+    const d = S[src] || S.all;
+    // Revenue
+    revChart.data.labels = (d.rev_ids||[]).map(id=>DATA.managers[id]||id);
+    revChart.data.datasets[0].data = d.rev_vals||[];
+    revChart.update();
+    // Sales count
+    if(salesChart) {
+      const sc = d.sc||{};
+      const ids = Object.keys(sc).filter(id=>DATA.managers[id]).sort((a,b)=>(sc[b]||0)-(sc[a]||0));
+      salesChart.data.labels = ids.map(id=>DATA.managers[id]);
+      salesChart.data.datasets[0].data = ids.map(id=>sc[id]||0);
+      salesChart.update();
+    }
+    // Conversion
+    if(convChart) {
+      const conv = d.conv||{};
+      const CONV_EXCL2 = new Set(Object.keys(DATA.managers).filter(id=>DATA.managers[id]==="Виолетта Осадчук"));
+      const ids = Object.keys(conv).filter(id=>DATA.managers[id]&&(conv[id]?.inwork||0)>0&&!CONV_EXCL2.has(id)).sort((a,b)=>(conv[b]?.pct||0)-(conv[a]?.pct||0));
+      convChart.data.labels = ids.map(id=>DATA.managers[id]);
+      convChart.data.datasets[0].data = ids.map(id=>(conv[id]?.pct||0));
+      convChart.data.datasets[0].backgroundColor = ids.map(id=>{const p=conv[id]?.pct||0;return p>=5?'#6ab04c':p>=2?'#f5a623':'#eb4d4b';});
+      convChart.update();
+    }
+    // Avg ticket
+    if(avgChart) {
+      const ap = d.ap||{};
+      const ids = Object.keys(ap).filter(id=>DATA.managers[id]&&(ap[id]||0)>0).sort((a,b)=>(ap[b]||0)-(ap[a]||0));
+      avgChart.data.labels = ids.map(id=>DATA.managers[id]);
+      avgChart.data.datasets[0].data = ids.map(id=>ap[id]||0);
+      avgChart.update();
+    }
+  }
+  window.SRC_UPDATERS.push(applyRevSrc);
+})();
+
+// Sales by tariff — horizontal bar
+(function(){
+  const srcT = {
+    all:    {labels: DATA.tariff_labels,               values: DATA.tariff_values},
+    prereg: {labels: DATA.metrics_prereg.tariff_labels, values: DATA.metrics_prereg.tariff_values},
+    web:    {labels: DATA.metrics_web.tariff_labels,    values: DATA.metrics_web.tariff_values},
+  };
+  const palette = [
+    '#4f8ef7','#6ab04c','#f5a623','#a29bfe','#fd79a8','#00cec9',
+    '#e17055','#fdcb6e','#74b9ff','#55efc4','#b2bec3','#636e72'
+  ];
+  const tariffChart = new Chart(document.getElementById('tariffChart'), {
+    type: 'bar',
+    data: {
+      labels: DATA.tariff_labels,
+      datasets: [{
+        label: 'Продаж',
+        data: DATA.tariff_values,
+        backgroundColor: DATA.tariff_labels.map((_,i) => palette[i % palette.length]),
+        borderRadius: 4,
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {display: false},
+        tooltip: {callbacks: {
+          label: function(c) {
+            const total = tariffChart.data.datasets[0].data.reduce((a,b)=>a+b,0);
+            return ' ' + c.raw + ' сделок (' + Math.round(c.raw/total*100) + '%)';
+          }
+        }}
+      },
+      scales: {
+        x: {beginAtZero: true, ticks: {color: '#e8eaf0', stepSize: 1}, grid: {color: '#1e2a3a'}},
+        y: {ticks: {color: '#e8eaf0', font: {size: 12}}, grid: {color: '#1e2a3a'}}
+      }
+    }
+  });
+  window.SRC_UPDATERS.push(function(src) {
+    const d = srcT[src] || srcT.all;
+    tariffChart.data.labels = d.labels || [];
+    tariffChart.data.datasets[0].data = d.values || [];
+    tariffChart.data.datasets[0].backgroundColor = (d.labels||[]).map((_,i)=>palette[i%palette.length]);
+    tariffChart.update();
+  });
+})();
+
+// Country distribution — horizontal bar, responds to global source toggle
+(function(){
+  const srcData = {
+    all:    {labels: DATA.country_labels,        values: DATA.country_values},
+    prereg: {labels: DATA.country_labels_prereg, values: DATA.country_values_prereg},
+    web:    {labels: DATA.country_labels_web,    values: DATA.country_values_web},
+  };
+  const palette = [
+    '#4f8ef7','#6ab04c','#f5a623','#a29bfe','#fd79a8','#00cec9',
+    '#e17055','#fdcb6e','#74b9ff','#55efc4','#b2bec3','#636e72'
+  ];
+
+  function buildData(src) {
+    const lbs = ((srcData[src]||srcData.all).labels || []).slice().reverse();
+    const vls = ((srcData[src]||srcData.all).values || []).slice().reverse();
+    return {lbs, vls};
+  }
+
+  const init = buildData("all");
+  const chart = new Chart(document.getElementById('countryChart'), {
+    type: 'bar',
+    plugins: [ChartDataLabels],
+    data: {
+      labels: init.lbs,
+      datasets: [{
+        label: 'Лидов',
+        data: init.vls,
+        backgroundColor: init.lbs.map((_,i) => palette[i % palette.length]),
+        borderRadius: 4,
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {display: false},
+        tooltip: {callbacks: {
+          label: function(c) {
+            const tot = c.chart.data.datasets[0].data.reduce((a,b)=>a+b,0);
+            return ' ' + c.raw + ' лидов (' + Math.round(c.raw/tot*100) + '%)';
+          }
+        }},
+        datalabels: {
+          anchor: 'end', align: 'end', color: '#e8eaf0',
+          font: {size: 11, weight: 'bold'},
+          formatter: function(val, ctx) {
+            const tot = ctx.chart.data.datasets[0].data.reduce((a,b)=>a+b,0);
+            return val + ' (' + Math.round(val/tot*100) + '%)';
+          }
+        }
+      },
+      layout: {padding: {right: 90}},
+      scales: {
+        x: {beginAtZero:true, ticks:{color:'#e8eaf0'}, grid:{color:'#1e2a3a'}},
+        y: {ticks:{color:'#e8eaf0',font:{size:12}}, grid:{color:'#1e2a3a'}}
+      }
+    }
+  });
+
+  window.SRC_UPDATERS.push(function(src) {
+    const d = buildData(src);
+    chart.data.labels = d.lbs;
+    chart.data.datasets[0].data = d.vls;
+    chart.data.datasets[0].backgroundColor = d.lbs.map((_,i)=>palette[i%palette.length]);
+    chart.update();
+  });
+})();
+
+// Country status 100% stacked horizontal bar with week filter + global source toggle
+(function(){
+  const srcByWeek = {
+    all:    DATA.cstat_by_week,
+    prereg: DATA.cstat_by_week_prereg,
+    web:    DATA.cstat_by_week_web,
+  };
+  let activeByWeek = DATA.cstat_by_week;
+  const countries = DATA.country_labels;
+  if(!activeByWeek || !countries.length) return;
+
+  let weekKeys = Object.keys(activeByWeek);
+  const rev = countries.slice().reverse();
+
+  function buildDatasets(ds) {
+    const totals = countries.map((_, ci) => ds.reduce((s, d) => s + (d.data[ci] || 0), 0));
+    return ds.map(d => ({
+      label: d.label,
+      data: d.data.slice().reverse().map((v, ri) => {
+        const ci = countries.length - 1 - ri;
+        return totals[ci] ? Math.round(v / totals[ci] * 100) : 0;
+      }),
+      raw: d.data.slice().reverse(),
+      backgroundColor: d.color,
+      borderRadius: 2,
+    }));
+  }
+
+  const chart = new Chart(document.getElementById('countryStatusChart'), {
+    type: 'bar',
+    data: { labels: rev, datasets: buildDatasets(activeByWeek['Все время']) },
+    options: {
+      indexAxis: 'y',
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {labels: {color: '#e8eaf0', boxWidth: 14}},
+        tooltip: {
+          callbacks: {
+            label: function(c) {
+              const raw = c.dataset.raw[c.dataIndex];
+              return ' ' + c.dataset.label + ': ' + raw + ' (' + c.raw + '%)';
+            }
+          }
+        }
+      },
+      scales: {
+        x: {stacked:true, min:0, max:100, ticks:{color:'#e8eaf0', callback:v=>v+'%'}, grid:{color:'#1e2a3a'}},
+        y: {stacked:true, ticks:{color:'#e8eaf0', font:{size:12}}, grid:{color:'#1e2a3a'}}
+      }
+    }
+  });
+
+  // Render week filter buttons
+  const btnWrap = document.getElementById('cstatWeekBtns');
+  let activeKey = 'Все время';
+  const btnStyle = (active) =>
+    'padding:5px 12px;border-radius:5px;border:none;cursor:pointer;font-size:12px;font-weight:600;' +
+    (active ? 'background:#4f8ef7;color:#fff;' : 'background:#1e2a3a;color:#a0aec0;');
+
+  function applyWeek(key) {
+    const ds = activeByWeek[key] || activeByWeek['Все время'] || [];
+    const newDs = buildDatasets(ds);
+    chart.data.datasets.forEach((d, i) => {
+      d.data = newDs[i].data;
+      d.raw  = newDs[i].raw;
+    });
+    chart.update();
+  }
+
+  function renderBtns() {
+    btnWrap.innerHTML = '';
+    weekKeys.forEach(k => {
+      const btn = document.createElement('button');
+      btn.textContent = k;
+      btn.style.cssText = btnStyle(k === activeKey);
+      btn.onclick = function() {
+        activeKey = k;
+        applyWeek(activeKey);
+        renderBtns();
+      };
+      btnWrap.appendChild(btn);
+    });
+  }
+  renderBtns();
+
+  window.SRC_UPDATERS.push(function(src) {
+    activeByWeek = srcByWeek[src] || srcByWeek.all;
+    weekKeys = Object.keys(activeByWeek);
+    activeKey = 'Все время';
+    applyWeek(activeKey);
+    renderBtns();
+  });
+})();
+
+// Manager × country heatmap table — week filter + global source toggle
+(function(){
+  const cols    = DATA.mgr_country_cols;
+  const byWeek  = DATA.mgr_country_by_week;
+  const bySrc   = {
+    all:    DATA.mgr_country_data,
+    prereg: DATA.mgr_country_data_prereg,
+    web:    DATA.mgr_country_data_web,
+  };
+  const mgrs    = DATA.managers;
+  const table   = document.getElementById('mgrCountryTable');
+  const btnWrap = document.getElementById('mgrCountryWeekBtns');
+  if(!table || !cols || !cols.length || !byWeek) return;
+
+  const weekKeys  = Object.keys(byWeek);
+  let activeKey   = 'Все время';
+  let activeSrc   = 'all';
+
+  const btnStyle = (active) =>
+    'padding:5px 12px;border-radius:5px;border:none;cursor:pointer;font-size:12px;font-weight:600;' +
+    (active ? 'background:#4f8ef7;color:#fff;' : 'background:#1e2a3a;color:#a0aec0;');
+
+  function buildTable(data) {
+    const colMax = cols.map(col =>
+      Math.max(1, ...Object.values(data).map(r => r[col] || 0))
+    );
+
+    let h = '<thead><tr><th style="text-align:left;padding:6px 10px;color:#a0aec0;border-bottom:1px solid #2a2d3a">Менеджер</th>';
+    cols.forEach(col => {
+      h += '<th style="text-align:center;padding:6px 10px;color:#a0aec0;border-bottom:1px solid #2a2d3a">' + col + '</th>';
+    });
+    h += '<th style="text-align:center;padding:6px 10px;color:#a0aec0;border-bottom:1px solid #2a2d3a">Итого</th></tr></thead><tbody>';
+
+    const mgrIds = Object.keys(data).filter(id => mgrs[id])
+      .sort((a,b) => cols.reduce((s,c) => s + (data[b][c]||0) - (data[a][c]||0), 0));
+
+    mgrIds.forEach(id => {
+      const row   = data[id];
+      const total = cols.reduce((s,c) => s + (row[c]||0), 0);
+      h += '<tr>';
+      h += '<td style="padding:6px 10px;color:#e8eaf0;white-space:nowrap">' + mgrs[id] + '</td>';
+      cols.forEach((col, ci) => {
+        const v = row[col] || 0;
+        const intensity = colMax[ci] > 0 ? v / colMax[ci] : 0;
+        const bg = 'rgba(79,142,247,' + (0.08 + intensity * 0.72).toFixed(2) + ')';
+        const textColor = intensity > 0.5 ? '#fff' : '#e8eaf0';
+        h += '<td style="text-align:center;padding:6px 10px;background:' + bg + ';color:' + textColor + ';font-weight:' + (v > 0 ? '600' : '400') + '">' + (v || '—') + '</td>';
+      });
+      h += '<td style="text-align:center;padding:6px 10px;color:#a0aec0;font-weight:600">' + total + '</td>';
+      h += '</tr>';
+    });
+    h += '</tbody>';
+    table.innerHTML = h;
+  }
+
+  function currentData() {
+    // If a specific week is selected, use byWeek data (ignores source toggle for now)
+    // If "Все время" selected, apply source filter
+    if(activeKey !== 'Все время') return byWeek[activeKey];
+    return bySrc[activeSrc] || bySrc.all;
+  }
+
+  function renderBtns() {
+    btnWrap.innerHTML = '';
+    weekKeys.forEach(k => {
+      const btn = document.createElement('button');
+      btn.textContent = k;
+      btn.style.cssText = btnStyle(k === activeKey);
+      btn.onclick = function() {
+        activeKey = k;
+        buildTable(currentData());
+        renderBtns();
+      };
+      btnWrap.appendChild(btn);
+    });
+  }
+
+  buildTable(currentData());
+  renderBtns();
+
+  window.SRC_UPDATERS.push(function(src) {
+    activeSrc = src;
+    activeKey = 'Все время'; // reset week when source changes
+    buildTable(currentData());
+    renderBtns();
+  });
+})();
+
+// Webinar funnel section
+(function(){
+  const d = DATA;
+  const funnel = document.getElementById("webinarFunnel");
+  if(!funnel) return;
+
+  const preregActive = d.prereg_total - (d.prereg_converted||0) - (d.prereg_disqualified||0) - (d.prereg_real_lost||0);
+  const convPct = d.prereg_total ? Math.round((d.prereg_converted||0) / d.prereg_total * 100) : 0;
+  const webTotal = (d.web_order_total||0) + (d.web_prepay_total||0);
+  const salePct  = webTotal ? Math.round((d.web_total_sales||0) / webTotal * 100) : 0;
+
+  const cards = [
+    {title:"Предзаписей всего",    value: d.prereg_total||0,         color:"#4f8ef7", hint:"Анкета перезаписи 06.2026"},
+    {title:"Активны сейчас",       value: preregActive > 0 ? preregActive : 0, color:"#00cec9", hint:"Ещё в воронке"},
+    {title:"Перешли в заказ",      value: d.prereg_converted||0,     color:"#6ab04c", hint:'Причина ЗНР "Оставил Заказ"'},
+    {title:"Конверсия → заказ",    value: convPct + "%",              color:"#a29bfe", hint:"% предзаписей, оформивших заказ на вебинаре"},
+    {title:"Заказов с вебинара",   value: d.web_order_total||0,       color:"#f5a623", hint:"Заказ веб 06.26"},
+    {title:"Предоплат",            value: d.web_prepay_total||0,      color:"#fd79a8", hint:"Предоплата веб 06.26"},
+    {title:"Продажи с вебинара",   value: d.web_total_sales||0,       color:"#6ab04c", hint:"Статус Продажа из заказов/предоплат"},
+    {title:"Конверсия → продажа",  value: salePct + "%",              color:"#fdcb6e", hint:"% заказов/предоплат, дошедших до продажи"},
+  ];
+
+  funnel.innerHTML = cards.map(c =>
+    '<div class="chart-card" style="padding:16px 20px;min-width:150px">' +
+    '<div style="font-size:26px;font-weight:700;color:' + c.color + '">' + c.value + '</div>' +
+    '<div style="font-size:13px;color:#e8eaf0;margin-top:4px">' + c.title + '</div>' +
+    '<div style="font-size:11px;color:#636e72;margin-top:2px">' + c.hint + '</div>' +
+    '</div>'
+  ).join('');
+})();
+
+// Closure reasons horizontal bar
+// Sale structure charts (count + revenue by source type)
+(function(){
+  const cats   = ["Предзапись", "Заказ веб (полная оплата)", "Предоплата веб"];
+  const counts = [DATA.prereg_sale_count||0, DATA.web_order_sale_count||0, DATA.web_prepay_sale_count||0];
+  const revs   = [DATA.prereg_sale_revenue||0, DATA.web_order_sale_revenue||0, DATA.web_prepay_sale_revenue||0];
+  const colors = ["#4f8ef7", "#6ab04c", "#f5a623"];
+
+  new Chart(document.getElementById("saleCountChart"),{
+    type:"bar",
+    data:{
+      labels: cats,
+      datasets:[{
+        label:"Продаж",
+        data: counts,
+        backgroundColor: colors,
+        borderRadius: 4,
+      }]
+    },
+    options:{
+      maintainAspectRatio:false,
+      plugins:{
+        legend:{display:false},
+        tooltip:{callbacks:{label:function(c){
+          const total = counts.reduce((a,b)=>a+b,0);
+          return ` ${c.raw} (${total?Math.round(c.raw/total*100):0}%)`;
+        }}}
+      },
+      scales:{
+        x:{ticks:{color:"#e8eaf0",font:{size:11}},grid:{color:"#1e2a3a"}},
+        y:{beginAtZero:true,ticks:{color:"#e8eaf0",stepSize:1},grid:{color:"#1e2a3a"}}
+      }
+    }
+  });
+
+  new Chart(document.getElementById("saleRevenueChart"),{
+    type:"bar",
+    data:{
+      labels: cats,
+      datasets:[{
+        label:"Выручка, ₽",
+        data: revs,
+        backgroundColor: colors,
+        borderRadius: 4,
+      }]
+    },
+    options:{
+      maintainAspectRatio:false,
+      plugins:{
+        legend:{display:false},
+        tooltip:{callbacks:{label:function(c){
+          return ` ${c.raw.toLocaleString("ru-RU")} ₽`;
+        }}}
+      },
+      scales:{
+        x:{ticks:{color:"#e8eaf0",font:{size:11}},grid:{color:"#1e2a3a"}},
+        y:{
+          beginAtZero:true,
+          ticks:{color:"#e8eaf0",callback:v=>v.toLocaleString("ru-RU")+" ₽"},
+          grid:{color:"#1e2a3a"}
+        }
+      }
+    }
+  });
+})();
+
+// Closure reasons chart — global toggle
+(function(){
+  const srcR = {
+    all:    {labels: DATA.reason_labels,               values: DATA.reason_values},
+    prereg: {labels: DATA.metrics_prereg.reason_labels, values: DATA.metrics_prereg.reason_values},
+    web:    {labels: DATA.metrics_web.reason_labels,    values: DATA.metrics_web.reason_values},
+  };
+  const reasonChart = new Chart(document.getElementById("reasonChart"),{
+    type:"bar",
+    data:{
+      labels:DATA.reason_labels,
+      datasets:[{
+        label:"Сделок",
+        data:DATA.reason_values,
+        backgroundColor:"#eb4d4b",
+        borderRadius:4,
+      }]
+    },
+    options:{
+      indexAxis:"y",
+      maintainAspectRatio:false,
+      plugins:{
+        legend:{display:false},
+        tooltip:{callbacks:{
+          label:function(c){
+            const total=reasonChart.data.datasets[0].data.reduce((a,b)=>a+b,0);
+            return ` ${c.raw} сделок (${Math.round(c.raw/total*100)}%)`;
+          }
+        }}
+      },
+      scales:{
+        x:{beginAtZero:true,ticks:{color:"#e8eaf0"},grid:{color:"#1e2a3a"}},
+        y:{ticks:{color:"#e8eaf0",font:{size:12}},grid:{display:false}}
+      }
+    }
+  });
+  window.SRC_UPDATERS.push(function(src) {
+    const d = srcR[src] || srcR.all;
+    reasonChart.data.labels = d.labels || [];
+    reasonChart.data.datasets[0].data = d.values || [];
+    reasonChart.update();
+  });
+})();
+
+// Manager detail table — global toggle
+(function(){
+  const srcDetail = {
+    all:    DATA.mgr_detail,
+    prereg: DATA.metrics_prereg.mgr_detail,
+    web:    DATA.metrics_web.mgr_detail,
+  };
+  function renderTable(vizData) {
+    const tbody=document.getElementById("mgrTable");
+    tbody.innerHTML="";
+    mgrIds.forEach(id=>{
+      const d=vizData[id]||{};
+      const tot=Object.values(d).reduce((s,v)=>s+v,0);
+      const ov=DATA.overdue[id]||0;
+      const ovColor=ov>20?"#eb4d4b":ov>5?"#f5a623":"#6ab04c";
+      tbody.innerHTML+=`<tr>
+        <td>${DATA.managers[id]||id}</td>
+        <td class="num">${fmt(tot)}</td>
+        <td class="num"><span class="tag tag-incoming">${d.incoming||0}</span></td>
+        <td class="num"><span class="tag tag-new-lead">${d.new_lead||0}</span></td>
+        <td class="num"><span class="tag tag-om">${d.om||0}</span></td>
+        <td class="num"><span class="tag tag-in-work">${d.in_work||0}</span></td>
+        <td class="num"><span class="tag tag-contact">${d.contact||0}</span></td>
+        <td class="num"><span class="tag tag-qualified">${d.qualified||0}</span></td>
+        <td class="num"><span class="tag tag-ndz">${d.ndz||0}</span></td>
+        <td class="num"><span class="tag tag-offer">${d.offer||0}</span></td>
+        <td class="num"><span class="tag tag-delayed">${d.delayed||0}</span></td>
+        <td class="num"><span class="tag tag-sale">${d.sale||0}</span></td>
+        <td class="num"><span class="tag tag-lost">${d.lost||0}</span></td>
+        <td class="num" style="color:${ovColor}">${ov}</td>
+      </tr>`;
+    });
+  }
+  renderTable(DATA.mgr_detail);
+  window.SRC_UPDATERS.push(function(src) {
+    renderTable(srcDetail[src] || srcDetail.all);
+  });
+})();
+
+// Stat cards update — global toggle
+(function(){
+  const gc = DATA.group_counts || {};
+  const srcStats = {
+    all: {
+      total:    DATA.total_all || 0,
+      in_work:  (gc.in_work||0)+(gc.contact||0)+(gc.qualified||0),
+      ndz:      gc.ndz||0,
+      offer:    gc.offer||0,
+      delayed:  gc.delayed||0,
+      invoiced: gc.invoiced||0,
+      sale_cnt: gc.sale||0,
+      revenue:  DATA.revenue_all||0,
+      avg_price: DATA.avg_price_all||0,
+      conv_pct: DATA.total_all ? Math.round((gc.sale||0)/DATA.total_all*10000)/100 : 0,
+    },
+    prereg: DATA.metrics_prereg,
+    web:    DATA.metrics_web,
+  };
+  function numFmt(n){ return Math.round(n||0).toLocaleString("ru-RU"); }
+  function applyStats(d) {
+    document.getElementById("sv_total").textContent    = numFmt(d.total);
+    document.getElementById("sv_inwork").textContent   = numFmt(d.in_work);
+    document.getElementById("sv_ndz").textContent      = numFmt(d.ndz);
+    document.getElementById("sv_offer").textContent    = numFmt(d.offer);
+    document.getElementById("sv_delayed").textContent  = numFmt(d.delayed);
+    document.getElementById("sv_invoiced").textContent = numFmt(d.invoiced);
+    document.getElementById("sv_sale").textContent     = numFmt(d.sale_cnt);
+    document.getElementById("sv_conv").textContent     = (d.conv_pct||0).toFixed(2)+"%";
+    document.getElementById("sv_revenue").textContent  = numFmt(d.revenue)+" ₽";
+    document.getElementById("sv_avg").textContent         = numFmt(d.avg_price)+" ₽";
+    // avg_price_no_prepay is a global metric — only meaningful for "all" mode; hide for filtered views
+    const noPreEl = document.getElementById("sv_avg_noprepay");
+    if(noPreEl) {
+      if(src === "all") {
+        noPreEl.textContent = numFmt(DATA.avg_price_no_prepay)+" ₽";
+        noPreEl.closest('.stat').style.opacity = "1";
+      } else {
+        noPreEl.closest('.stat').style.opacity = "0.35";
+      }
+    }
+  }
+  window.SRC_UPDATERS.push(function(src) {
+    applyStats(srcStats[src] || srcStats.all);
+  });
+})();
+</script>
+</body>
+</html>
