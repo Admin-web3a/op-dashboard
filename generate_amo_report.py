@@ -2702,7 +2702,7 @@ def generate_html(report):
 if __name__ == "__main__":
     report = build_report()
     html = generate_html(report)
-    os.makedirs("docs", exist_ok=True)
-    with open("docs/index.html", "w", encoding="utf-8") as f:
+    os.makedirs("docs/zapusk062026", exist_ok=True)
+    with open("docs/zapusk062026/index.html", "w", encoding="utf-8") as f:
         f.write(html)
     print(f"Done. Total: {report['total']}, Sales: {report['group_counts'].get('invoiced',0)+report['group_counts'].get('sale',0)}")
