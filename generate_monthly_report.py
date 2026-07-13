@@ -140,16 +140,21 @@ def fetch_pipeline_leads(statuses, payment_date_fid):
 
 def fetch_active_leads(statuses):
     """Fetch all currently open (non-sale, non-lost) leads in the pipeline.
+    Uses 1-year lookback to skip ancient closed deals and stay within
+    a manageable page count. Any genuinely active deal will have been
+    updated in the last 12 months.
     Returns compact list [{mgr, sid}] — used for the manager snapshot chart."""
     EXCLUDED = {"sale", "lost"}
+    one_year_ago = int((datetime.datetime.utcnow() - datetime.timedelta(days=365)).timestamp())
     leads = []
     page = 1
-    MAX_PAGES = 60
-    print(f"  Fetching active pipeline snapshot…")
+    MAX_PAGES = 40
+    print(f"  Fetching active pipeline snapshot (updated since {datetime.date.fromtimestamp(one_year_ago)})…")
     while page <= MAX_PAGES:
         path = (f"leads?limit=250&page={page}"
                 f"&filter[pipeline_id]={PIPELINE_ID}"
-                f"&order[id]=asc")
+                f"&filter[updated_at][from]={one_year_ago}"
+                f"&order[updated_at]=desc")
         try:
             data = api_get(path)
         except Exception as e:
