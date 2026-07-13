@@ -707,13 +707,14 @@ function dateStr(d) {
   if (!d) return null;
   return d.toISOString().slice(0,10);
 }
-function addDays(d, n) { const r=new Date(d); r.setDate(r.getDate()+n); return r; }
+function addDays(d, n) { const r=new Date(d); r.setUTCDate(r.getUTCDate()+n); return r; }
 function mondayOf(d) {
-  const day = d.getDay();
-  const r = new Date(d);
-  r.setDate(d.getDate() - (day===0 ? 6 : day-1));
-  r.setHours(0,0,0,0);
-  return r;
+  // Shift +3h so UTC date matches Moscow date, then find Monday in UTC
+  const msk = new Date(d.getTime() + 3 * 3600 * 1000);
+  const day = msk.getUTCDay();
+  msk.setUTCDate(msk.getUTCDate() - (day === 0 ? 6 : day - 1));
+  msk.setUTCHours(0, 0, 0, 0);
+  return msk;
 }
 
 // ── Filter ───────────────────────────────────────────────────────────────────
