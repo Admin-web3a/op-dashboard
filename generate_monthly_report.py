@@ -1084,7 +1084,7 @@ function _salesByMgr(leads) {
 
 function renderRevenueChart(leads) {
   const {rev, cnt} = _salesByMgr(leads);
-  const usedIds = MGR_IDS.filter(u => rev[u]>0);
+  const usedIds = MGR_IDS.filter(u => rev[u]>0).sort((a,b) => rev[b]-rev[a]);
   if (!usedIds.length) { upsertChart('revenueChart',{type:'bar',data:{labels:['Нет данных'],datasets:[{data:[0]}]},options:{plugins:{datalabels:{display:false}},scales:{x:{ticks:{color:'#777'}},y:{ticks:{color:'#777'}}}}}); return; }
   upsertChart('revenueChart',{type:'bar',
     data:{labels:usedIds.map(u=>MANAGERS[u]),
@@ -1099,7 +1099,7 @@ function renderRevenueChart(leads) {
 
 function renderSalesCntChart(leads) {
   const {cnt} = _salesByMgr(leads);
-  const usedIds = MGR_IDS.filter(u => cnt[u]>0);
+  const usedIds = MGR_IDS.filter(u => cnt[u]>0).sort((a,b) => cnt[b]-cnt[a]);
   if (!usedIds.length) { upsertChart('salesCntChart',{type:'bar',data:{labels:['Нет данных'],datasets:[{data:[0]}]},options:{plugins:{datalabels:{display:false}},scales:{x:{ticks:{color:'#777'}},y:{ticks:{color:'#777'}}}}}); return; }
   upsertChart('salesCntChart',{type:'bar',
     data:{labels:usedIds.map(u=>MANAGERS[u]),
@@ -1119,22 +1119,25 @@ function renderConvMgrChart(leads) {
     if (pos>=2 && inWork[l.mgr]!==undefined) inWork[l.mgr]++;
     if (grpOf(l)==='sale' && sales[l.mgr]!==undefined) sales[l.mgr]++;
   }
-  const usedIds = MGR_IDS.filter(u => inWork[u]>0 && MANAGERS[u] !== 'Виолетта Осадчук');
+  const convPct = uid => inWork[uid]>0 ? Math.round(sales[uid]/inWork[uid]*100) : 0;
+  const usedIds = MGR_IDS.filter(u => inWork[u]>0 && MANAGERS[u] !== 'Виолетта Осадчук')
+    .sort((a,b) => convPct(b)-convPct(a));
   if (!usedIds.length) { upsertChart('convMgrChart',{type:'bar',data:{labels:['Нет данных'],datasets:[{data:[0]}]},options:{plugins:{datalabels:{display:false}},scales:{x:{ticks:{color:'#777'}},y:{ticks:{color:'#777'}}}}}); return; }
   upsertChart('convMgrChart',{type:'bar',
     data:{labels:usedIds.map(u=>MANAGERS[u]),
-          datasets:[{data:usedIds.map(u=>inWork[u]>0?Math.min(10,Math.round(sales[u]/inWork[u]*100)):0),
+          datasets:[{data:usedIds.map(u=>convPct(u)),
             backgroundColor:'#a29bfe',borderRadius:4}]},
     options:{responsive:true,
       plugins:{legend:{display:false},
         datalabels:{color:'#ccc',font:{size:11},anchor:'end',align:'top',formatter:v=>v>0?v+'%':''}},
       scales:{x:{ticks:{color:'#aaa',maxRotation:35,font:{size:10}},grid:{display:false}},
-              y:{max:10,ticks:{color:'#777',callback:v=>v+'%'},grid:{color:'#1f2235'}} } }});
+              y:{ticks:{color:'#777',callback:v=>v+'%'},grid:{color:'#1f2235'}} } }});
 }
 
 function renderAvgCheckChart(leads) {
   const {rev, cnt} = _salesByMgr(leads);
-  const usedIds = MGR_IDS.filter(u => cnt[u]>0);
+  const avg = uid => cnt[uid]>0 ? Math.round(rev[uid]/cnt[uid]) : 0;
+  const usedIds = MGR_IDS.filter(u => cnt[u]>0).sort((a,b) => avg(b)-avg(a));
   if (!usedIds.length) { upsertChart('avgCheckChart',{type:'bar',data:{labels:['Нет данных'],datasets:[{data:[0]}]},options:{plugins:{datalabels:{display:false}},scales:{x:{ticks:{color:'#777'}},y:{ticks:{color:'#777'}}}}}); return; }
   upsertChart('avgCheckChart',{type:'bar',
     data:{labels:usedIds.map(u=>MANAGERS[u]),
