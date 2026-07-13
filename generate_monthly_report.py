@@ -138,6 +138,42 @@ def fetch_pipeline_leads(statuses, payment_date_fid):
     return leads
 
 
+def fetch_active_leads(statuses):
+    """Fetch all currently open (non-sale, non-lost) leads in the pipeline.
+    Returns compact list [{mgr, sid}] — used for the manager snapshot chart."""
+    EXCLUDED = {"sale", "lost"}
+    leads = []
+    page = 1
+    MAX_PAGES = 60
+    print(f"  Fetching active pipeline snapshot…")
+    while page <= MAX_PAGES:
+        path = (f"leads?limit=250&page={page}"
+                f"&filter[pipeline_id]={PIPELINE_ID}"
+                f"&order[id]=asc")
+        try:
+            data = api_get(path)
+        except Exception as e:
+            print(f"  Warning fetching active leads page {page}: {e}")
+            break
+        batch = data.get("_embedded", {}).get("leads", [])
+        if not batch:
+            break
+        for l in batch:
+            sid = l.get("status_id")
+            grp = statuses.get(sid, {}).get("group", "active")
+            if grp in EXCLUDED:
+                continue
+            leads.append({
+                "mgr": l.get("responsible_user_id"),
+                "sid": sid,
+            })
+        if len(batch) < 250:
+            break
+        page += 1
+    print(f"  Active leads: {len(leads)}")
+    return leads
+
+
 def fetch_overdue_tasks_per_lead(lead_ids_set):
     """Returns {lead_id: overdue_task_count} for leads in lead_ids_set."""
     now_ts = int(datetime.datetime.utcnow().timestamp())
@@ -340,17 +376,26 @@ def build_report():
         for sid, info in statuses.items()
     }
 
+    # Manager snapshot: all currently open deals (ignores date filter)
+    active_leads_raw = fetch_active_leads(statuses)
+    active_leads_data = [
+        {"mgr": l["mgr"], "sid": l["sid"]}
+        for l in active_leads_raw
+        if l.get("mgr") in MANAGERS
+    ]
+
     # Managers map for JS
     mgr_map = {str(k): v for k, v in MANAGERS.items()}
 
     now_str = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
     return {
-        "leads":      leads_data,
-        "statuses":   status_map,
-        "managers":   mgr_map,
-        "updated_at": now_str,
-        "fetch_from": FETCH_FROM,
+        "leads":        leads_data,
+        "active_leads": active_leads_data,
+        "statuses":     status_map,
+        "managers":     mgr_map,
+        "updated_at":   now_str,
+        "fetch_from":   FETCH_FROM,
     }
 
 
@@ -496,6 +541,7 @@ function triggerRefresh() {
 <!-- ── Manager ── -->
 <div class="section">
   <h2>Лиды по менеджерам</h2>
+  <p style="color:var(--muted);font-size:12px;margin:-10px 0 14px">Все открытые сделки воронки, закреплённые за менеджером (без учёта фильтра дат). Продажи и закрытые сделки не включаются.</p>
   <div class="chart-wrap"><canvas id="mgrChart" height="130"></canvas></div>
 </div>
 
@@ -734,7 +780,6 @@ function applyFilters() {
 function renderAll(leads, mode, fromStr, toStr) {
   updateStatCards(leads);
   renderDailyChart(leads, mode, fromStr, toStr);
-  renderMgrChart(leads);
   renderOverdueChart(leads);
   renderFunnelChart(leads);
   renderCohortTable(leads);
@@ -827,7 +872,9 @@ function renderDailyChart(leads, mode, fromStr, toStr) {
 
 // ── Manager chart ────────────────────────────────────────────────────────────
 
-function renderMgrChart(leads) {
+function renderMgrChart() {
+  // Always uses the pipeline snapshot (all open deals), ignores date filter
+  const leads = DATA.active_leads;
   const mgrData = {};
   for (const uid of MGR_IDS) mgrData[uid] = {};
   for (const l of leads) {
@@ -1320,6 +1367,9 @@ const sel = document.getElementById('month_quick');
 for (const opt of sel.options) { if (opt.value===curKey) { opt.selected=true; break; } }
 
 applyFilters();
+
+// Manager snapshot chart — drawn once, not affected by date filter
+renderMgrChart();
 
 // Auto-reapply when radio changes
 document.querySelectorAll('[name=datetype]').forEach(r => r.addEventListener('change', applyFilters));
