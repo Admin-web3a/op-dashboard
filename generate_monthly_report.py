@@ -567,11 +567,6 @@ function triggerRefresh() {
   <h2>Статусы по странам (топ-10)</h2>
   <div class="chart-wrap"><canvas id="countryStatusChart" height="120"></canvas></div>
 </div>
-<div class="section">
-  <h2>Менеджеры × страны (количество лидов)</h2>
-  <div class="heatmap-wrap" id="mgrCountryWrap"></div>
-</div>
-
 <!-- ── Close reasons ── -->
 <div class="section">
   <h2>Причины закрытия сделок</h2>
@@ -752,7 +747,6 @@ function renderAll(leads, mode, fromStr, toStr) {
   renderReadyChart(leads);
   renderCountryChart(leads);
   renderCountryStatusChart(leads);
-  renderMgrCountryHeatmap(leads);
   renderReasonChart(leads);
   renderMgrTable(leads);
 }
@@ -1258,34 +1252,6 @@ function renderCountryStatusChart(leads) {
         x:{stacked:true,ticks:{color:'#777'},grid:{color:'#1f2235'}},
         y:{stacked:true,max:100,ticks:{color:'#777',callback:v=>v+'%'},grid:{color:'#1f2235'}}
       }}});
-}
-
-function renderMgrCountryHeatmap(leads) {
-  const topC = _topCountries(leads, 10);
-  const usedIds = MGR_IDS.filter(uid => leads.some(l=>l.mgr===uid));
-  const data = {}; // {uid: {country: count}}
-  for (const uid of usedIds) data[uid] = {};
-  for (const l of leads) {
-    if (!data[l.mgr]) continue;
-    const c = l.country||'Не определено';
-    if (topC.includes(c)) data[l.mgr][c] = (data[l.mgr][c]||0)+1;
-  }
-  const maxVal = Math.max(1, ...usedIds.flatMap(uid => topC.map(c => data[uid][c]||0)));
-
-  let html = '<table class="heatmap-tbl"><thead><tr><th>Менеджер</th>';
-  topC.forEach(c => { html += `<th>${c}</th>`; });
-  html += '</tr></thead><tbody>';
-  for (const uid of usedIds) {
-    html += `<tr><td>${MANAGERS[uid]}</td>`;
-    topC.forEach(c => {
-      const v = data[uid][c]||0;
-      const heat = Math.min(5, Math.round(v/maxVal*5));
-      html += `<td class="heat-${heat}">${v||''}</td>`;
-    });
-    html += '</tr>';
-  }
-  html += '</tbody></table>';
-  document.getElementById('mgrCountryWrap').innerHTML = html;
 }
 
 // ── Close reasons ────────────────────────────────────────────────────────────
