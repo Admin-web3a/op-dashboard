@@ -138,23 +138,39 @@ def fetch_pipeline_leads(statuses, payment_date_fid):
     return leads
 
 
-def fetch_active_leads(statuses):
-    """Fetch all currently open (non-sale, non-lost) leads in the pipeline.
-    Uses 1-year lookback to skip ancient closed deals and stay within
-    a manageable page count. Any genuinely active deal will have been
-    updated in the last 12 months.
+def fetch_active_leads():
+    """Fetch all currently open leads in the pipeline using a direct status filter.
+    This is fast: the API returns only active-status leads, no post-filtering needed.
     Returns compact list [{mgr, sid}] — used for the manager snapshot chart."""
-    EXCLUDED = {"sale", "lost"}
-    one_year_ago = int((datetime.datetime.utcnow() - datetime.timedelta(days=365)).timestamp())
+    EXCLUDED_GROUPS = {"sale", "lost"}
+
+    # Get statuses for our specific pipeline
+    try:
+        pipe_data = api_get(f"leads/pipelines/{PIPELINE_ID}")
+        pipeline_statuses = pipe_data.get("_embedded", {}).get("statuses", [])
+    except Exception as e:
+        print(f"  Warning fetching pipeline statuses: {e}")
+        return []
+
+    active_sids = [
+        s["id"] for s in pipeline_statuses
+        if STATUS_GROUPS.get(s["name"], "active") not in EXCLUDED_GROUPS
+    ]
+    if not active_sids:
+        print("  No active statuses found — skipping active leads fetch")
+        return []
+
+    status_params = "&".join(
+        f"filter[statuses][{i}][pipeline_id]={PIPELINE_ID}&filter[statuses][{i}][status_id]={sid}"
+        for i, sid in enumerate(active_sids)
+    )
+    print(f"  Fetching active leads by status filter ({len(active_sids)} active statuses)…")
+
     leads = []
     page = 1
-    MAX_PAGES = 40
-    print(f"  Fetching active pipeline snapshot (updated since {datetime.date.fromtimestamp(one_year_ago)})…")
+    MAX_PAGES = 20
     while page <= MAX_PAGES:
-        path = (f"leads?limit=250&page={page}"
-                f"&filter[pipeline_id]={PIPELINE_ID}"
-                f"&filter[updated_at][from]={one_year_ago}"
-                f"&order[updated_at]=desc")
+        path = f"leads?limit=250&page={page}&{status_params}&order[updated_at]=desc"
         try:
             data = api_get(path)
         except Exception as e:
@@ -164,18 +180,14 @@ def fetch_active_leads(statuses):
         if not batch:
             break
         for l in batch:
-            sid = l.get("status_id")
-            grp = statuses.get(sid, {}).get("group", "active")
-            if grp in EXCLUDED:
-                continue
             leads.append({
                 "mgr": l.get("responsible_user_id"),
-                "sid": sid,
+                "sid": l.get("status_id"),
             })
         if len(batch) < 250:
             break
         page += 1
-    print(f"  Active leads: {len(leads)}")
+    print(f"  Active leads fetched: {len(leads)}")
     return leads
 
 
@@ -382,7 +394,7 @@ def build_report():
     }
 
     # Manager snapshot: all currently open deals (ignores date filter)
-    active_leads_raw = fetch_active_leads(statuses)
+    active_leads_raw = fetch_active_leads()
     active_leads_data = [
         {"mgr": l["mgr"], "sid": l["sid"]}
         for l in active_leads_raw
