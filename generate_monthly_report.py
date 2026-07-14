@@ -181,14 +181,48 @@ def fetch_active_leads():
             break
         for l in batch:
             leads.append({
+                "id":  l.get("id"),
                 "mgr": l.get("responsible_user_id"),
                 "sid": l.get("status_id"),
+                "upd": l.get("updated_at"),
             })
         if len(batch) < 250:
             break
         page += 1
     print(f"  Active leads fetched: {len(leads)}")
     return leads
+
+
+def fetch_future_tasks_for_active(lead_ids_set):
+    """Returns set of lead_ids that have at least one active future task (not completed, complete_till > now)."""
+    if not lead_ids_set:
+        return set()
+    now_ts = int(datetime.datetime.utcnow().timestamp())
+    leads_with_task = set()
+    page = 1
+    MAX_PAGES = 10
+    print(f"  Fetching future tasks for {len(lead_ids_set)} active leads…")
+    while page <= MAX_PAGES:
+        path = (f"tasks?limit=250&page={page}"
+                f"&filter[is_completed]=0&filter[complete_till][from]={now_ts}")
+        try:
+            data = api_get(path)
+        except Exception as e:
+            print(f"  Warning fetching future tasks page {page}: {e}")
+            break
+        batch = data.get("_embedded", {}).get("tasks", [])
+        if not batch:
+            break
+        for t in batch:
+            if t.get("entity_type") == "leads":
+                eid = t.get("entity_id")
+                if eid in lead_ids_set:
+                    leads_with_task.add(eid)
+        if len(batch) < 250:
+            break
+        page += 1
+    print(f"  Leads with future tasks: {len(leads_with_task)}")
+    return leads_with_task
 
 
 def fetch_overdue_tasks_per_lead(lead_ids_set):
@@ -413,9 +447,20 @@ def build_report():
     }
 
     # Manager snapshot: all currently open deals (ignores date filter)
+    print("Fetching active leads snapshot…")
     active_leads_raw = fetch_active_leads()
+    active_lead_ids = {l["id"] for l in active_leads_raw if l.get("id")}
+
+    print("Fetching future tasks for active leads…")
+    leads_with_future_task = fetch_future_tasks_for_active(active_lead_ids)
+
     active_leads_data = [
-        {"mgr": l["mgr"], "sid": l["sid"]}
+        {
+            "mgr": l["mgr"],
+            "sid": l["sid"],
+            "upd": l.get("upd"),
+            "ht":  (l["id"] in leads_with_future_task) if l.get("id") else False,
+        }
         for l in active_leads_raw
         if l.get("mgr") in MANAGERS
     ]
@@ -598,6 +643,20 @@ function triggerRefresh() {
   <div class="chart-wrap"><canvas id="mgrChart" height="130"></canvas></div>
 </div>
 
+<!-- ── Aging: stuck deals ── -->
+<div class="section">
+  <h2>Зависшие сделки</h2>
+  <p style="color:var(--muted);font-size:12px;margin:-10px 0 14px">Открытые сделки без движения по <code>updated_at</code>. Пороги — из <code>plans.json</code> (по умолчанию: жёлтый &gt;7 дн., красный &gt;14 дн.).</p>
+  <div id="agingTableWrap"></div>
+</div>
+
+<!-- ── No active task ── -->
+<div class="section">
+  <h2>Лиды без активной задачи, %</h2>
+  <p style="color:var(--muted);font-size:12px;margin:-10px 0 14px">Доля открытых сделок без запланированной задачи (complete_till &gt; сейчас) по каждому менеджеру.</p>
+  <div class="chart-wrap"><canvas id="noTaskChart" height="90"></canvas></div>
+</div>
+
 <!-- ── Overdue ── -->
 <div class="section">
   <h2>Просроченные задачи по менеджерам</h2>
@@ -617,10 +676,11 @@ function triggerRefresh() {
   <div id="cohortTableWrap"></div>
 </div>
 
-<!-- ── Conversion week chart ── -->
+<!-- ── Weekly dynamics ── -->
 <div class="section">
-  <h2>Конверсия «Взято в работу → Контакт установлен» по неделям</h2>
-  <div class="chart-wrap"><canvas id="convWeekChart" height="90"></canvas></div>
+  <h2>Динамика неделя к неделе</h2>
+  <p style="color:var(--muted);font-size:12px;margin:-10px 0 14px">Взято в работу по дате создания (столбцы) · Продажи по дате закрытия/оплаты (зелёная линия) · Конверсия % (правая ось).</p>
+  <div class="chart-wrap"><canvas id="weeklyDynChart" height="100"></canvas></div>
 </div>
 
 <!-- ── Manager sales charts ── -->
@@ -837,7 +897,7 @@ function renderAll(leads, mode, fromStr, toStr, fromTs, toTs) {
   renderOverdueChart(leads);
   renderFunnelChart(leads);
   renderCohortTable(leads);
-  renderConvWeekChart(leads);
+  renderWeeklyDynamicsChart(leads);
   renderRevenueChart(leads, fromStr ? fromStr.slice(0,7) : null);
   renderSalesCntChart(leads);
   renderConvMgrChart(leads);
@@ -1019,6 +1079,106 @@ function renderMgrChart() {
   });
 }
 
+// ── Aging table ──────────────────────────────────────────────────────────────
+
+function renderAgingTable() {
+  const now = Date.now() / 1000;
+  const curPeriod = new Date().toISOString().slice(0,7);
+  const planData  = DATA.plans ? (DATA.plans[curPeriod] || {}) : {};
+  const yellowDays = planData.aging_yellow_days || 7;
+  const redDays    = planData.aging_red_days    || 14;
+
+  const stats = {};
+  for (const uid of MGR_IDS) stats[uid] = {total:0, sumAge:0, yellow:0, red:0};
+
+  for (const l of DATA.active_leads) {
+    const s = stats[l.mgr];
+    if (!s || !l.upd) continue;
+    const age = (now - l.upd) / 86400;
+    s.total++;
+    s.sumAge += age;
+    if (age > yellowDays) s.yellow++;
+    if (age > redDays)    s.red++;
+  }
+
+  const rows = MGR_IDS
+    .filter(u => stats[u].total > 0)
+    .map(u => ({u, ...stats[u], avg: (stats[u].sumAge / stats[u].total).toFixed(1)}))
+    .sort((a,b) => b.red - a.red || b.yellow - a.yellow);
+
+  const wrap = document.getElementById('agingTableWrap');
+  if (!rows.length) { wrap.innerHTML='<p style="color:#555;font-size:12px">Нет данных</p>'; return; }
+
+  const TH = 'background:#22253a;color:var(--muted);font-size:11px;font-weight:600;padding:9px 14px;text-align:center;';
+  const TD = 'padding:8px 14px;text-align:center;border-top:1px solid var(--border);font-size:13px;';
+  let html = `<div style="overflow-x:auto"><table style="border-collapse:collapse;width:100%">
+    <thead><tr>
+      <th style="${TH}text-align:left">Менеджер</th>
+      <th style="${TH}">Всего</th>
+      <th style="${TH}">Ср. дней</th>
+      <th style="${TH}">&gt;${yellowDays} дн.</th>
+      <th style="${TH}">&gt;${redDays} дн.</th>
+    </tr></thead><tbody>`;
+
+  for (const r of rows) {
+    const ys = r.yellow > 0 ? 'color:#f5a623;font-weight:600' : 'color:#555';
+    const rs = r.red    > 0 ? 'color:#eb4d4b;font-weight:600' : 'color:#555';
+    html += `<tr>
+      <td style="${TD}text-align:left;color:var(--text)">${MANAGERS[r.u]}</td>
+      <td style="${TD}">${r.total}</td>
+      <td style="${TD}">${r.avg}</td>
+      <td style="${TD};${ys}">${r.yellow > 0 ? r.yellow : '—'}</td>
+      <td style="${TD};${rs}">${r.red    > 0 ? r.red    : '—'}</td>
+    </tr>`;
+  }
+  html += '</tbody></table></div>';
+  wrap.innerHTML = html;
+}
+
+// ── No active task chart ──────────────────────────────────────────────────────
+
+function renderNoTaskChart() {
+  const noTask = {}, total = {};
+  for (const uid of MGR_IDS) { noTask[uid]=0; total[uid]=0; }
+  for (const l of DATA.active_leads) {
+    if (total[l.mgr] === undefined) continue;
+    total[l.mgr]++;
+    if (!l.ht) noTask[l.mgr]++;
+  }
+  const usedIds = MGR_IDS.filter(u => total[u] > 0);
+  if (!usedIds.length) {
+    upsertChart('noTaskChart',{type:'bar',data:{labels:['Нет данных'],datasets:[{data:[0]}]},
+      options:{plugins:{datalabels:{display:false}},scales:{x:{ticks:{color:'#777'}},y:{ticks:{color:'#777'}}}}});
+    return;
+  }
+  const sorted = usedIds
+    .map(u => ({u, pct: Math.round(noTask[u]/total[u]*100), nt: noTask[u], tot: total[u]}))
+    .sort((a,b) => b.pct - a.pct);
+
+  upsertChart('noTaskChart', {
+    type: 'bar',
+    data: {
+      labels: sorted.map(x => MANAGERS[x.u]),
+      datasets: [{
+        data: sorted.map(x => x.pct),
+        backgroundColor: sorted.map(x => x.pct > 50 ? '#eb4d4b' : x.pct > 25 ? '#f5a623' : '#6ab04c'),
+        borderRadius: 4,
+      }]
+    },
+    options: {responsive:true,
+      plugins:{legend:{display:false},
+        datalabels:{color:'#ccc',font:{size:10},anchor:'end',align:'top',
+          formatter:(v,ctx) => {
+            const d = sorted[ctx.dataIndex];
+            return v > 0 ? `${v}% (${d.nt}/${d.tot})` : '';
+          }}},
+      scales:{
+        x:{ticks:{color:'#aaa',maxRotation:35,font:{size:10}},grid:{display:false}},
+        y:{ticks:{color:'#777',callback:v=>v+'%'},grid:{color:'#1f2235'},max:100}
+      }}
+  });
+}
+
 // ── Overdue tasks ────────────────────────────────────────────────────────────
 
 function renderOverdueChart(leads) {
@@ -1174,47 +1334,63 @@ function renderCohortTable(leads) {
   document.getElementById('cohortTableWrap').innerHTML = html;
 }
 
-// ── Conversion week chart (Взято → Контакт) ─────────────────────────────────
+// ── Weekly dynamics (Взято + Продажи + Конверсия) ───────────────────────────
 
-function renderConvWeekChart(leads) {
-  const weekVzv = {}, weekKon = {};
+function renderWeeklyDynamicsChart(leads) {
+  // Bars: Взято в работу by creation week
+  const weekVzv = {};
   for (const l of leads) {
-    if (!l.c) continue;
-    const g = grpOf(l);
-    const pos = FUNNEL_POS[g]||0;
-    if (pos < 2) continue;  // didn't reach взято в работу
-    const mon = mondayOf(new Date(l.c*1000));
-    const k = dateStr(mon);
-    weekVzv[k] = (weekVzv[k]||0)+1;
-    if (pos >= 3) weekKon[k] = (weekKon[k]||0)+1;
+    if (!l.c || (FUNNEL_POS[grpOf(l)]||0) < 2) continue;
+    const k = dateStr(mondayOf(new Date(l.c * 1000)));
+    weekVzv[k] = (weekVzv[k]||0) + 1;
   }
-  const weeks = Object.keys(weekVzv).sort();
-  if (!weeks.length) { upsertChart('convWeekChart',{type:'bar',data:{labels:[],datasets:[]},options:{plugins:{datalabels:{display:false}}}}); return; }
+  // Line: sales by closing/payment week
+  const weekSales = {};
+  for (const l of leads) {
+    const ts = l.x || l.p || null;
+    if (!ts || grpOf(l) !== 'sale') continue;
+    const k = dateStr(mondayOf(new Date(ts * 1000)));
+    weekSales[k] = (weekSales[k]||0) + 1;
+  }
 
-  const labels = weeks.map(w => {
-    const d = new Date(w+'T00:00:00Z');
-    const e = addDays(d,6);
+  const allWeeks = new Set([...Object.keys(weekVzv), ...Object.keys(weekSales)]);
+  const weeks = [...allWeeks].sort();
+  if (!weeks.length) {
+    upsertChart('weeklyDynChart',{type:'bar',data:{labels:[],datasets:[]},options:{plugins:{datalabels:{display:false}}}});
+    return;
+  }
+
+  const fmtWeek = w => {
+    const d = new Date(w+'T00:00:00Z'), e = addDays(d,6);
     const fmt = x => x.getUTCDate().toString().padStart(2,'0')+'.'+(x.getUTCMonth()+1).toString().padStart(2,'0');
     return fmt(d)+'–'+fmt(e);
-  });
-  const vzvVals = weeks.map(w => weekVzv[w]||0);
-  const konPct  = weeks.map(w => weekVzv[w] ? Math.round((weekKon[w]||0)/weekVzv[w]*100) : 0);
+  };
+  const labels    = weeks.map(fmtWeek);
+  const vzvVals   = weeks.map(w => weekVzv[w]||0);
+  const salesVals = weeks.map(w => weekSales[w]||0);
+  const convPct   = weeks.map(w => (weekVzv[w]||0) > 0 ? Math.round((weekSales[w]||0)/(weekVzv[w])*100) : 0);
 
-  upsertChart('convWeekChart', {
+  upsertChart('weeklyDynChart', {
     type:'bar',
     data:{labels, datasets:[
-      {type:'bar',label:'Взято в работу',data:vzvVals,backgroundColor:'#00cec9',yAxisID:'y',order:2},
-      {type:'line',label:'Конверсия %',data:konPct,borderColor:'#ffd32a',backgroundColor:'#ffd32a22',
-       yAxisID:'y2',tension:.3,pointRadius:4,order:1},
+      {type:'bar',  label:'Взято в работу', data:vzvVals,  backgroundColor:'#00cec9', borderRadius:3, yAxisID:'y', order:3, datalabels:{display:false}},
+      {type:'line', label:'Продажи',        data:salesVals, borderColor:'#6ab04c', backgroundColor:'#6ab04c22',
+       tension:.3, pointRadius:4, fill:true, yAxisID:'y', order:2, datalabels:{display:false}},
+      {type:'line', label:'Конверсия %',    data:convPct,   borderColor:'#ffd32a', backgroundColor:'transparent',
+       tension:.3, pointRadius:4, yAxisID:'y2', order:1,
+       datalabels:{display:true,color:'#ffd32a',font:{size:10,weight:'600'},anchor:'end',align:'top',
+         formatter: v => v > 0 ? v+'%' : ''}},
     ]},
     options:{responsive:true,
-      plugins:{legend:{position:'bottom',labels:{color:'#aaa',font:{size:11}}},
-        datalabels:{display:false}},
+      plugins:{
+        legend:{position:'bottom',labels:{color:'#aaa',font:{size:11},boxWidth:12}},
+        datalabels:{display: ctx => ctx.datasetIndex === 2}
+      },
       scales:{
         x:{ticks:{color:'#777'},grid:{color:'#1f2235'}},
         y:{ticks:{color:'#777'},grid:{color:'#1f2235'},title:{display:true,text:'Лидов',color:'#555'}},
         y2:{position:'right',ticks:{color:'#ffd32a',callback:v=>v+'%'},grid:{display:false},
-            suggestedMax:100,title:{display:true,text:'Конверсия %',color:'#555'}}
+            suggestedMax:50,title:{display:true,text:'Конверсия',color:'#555'}}
       }}
   });
 }
@@ -1519,8 +1695,10 @@ initGroupACards();
 
 applyFilters();
 
-// Manager snapshot chart — drawn once, not affected by date filter
+// Snapshot charts — drawn once, not affected by date filter
 renderMgrChart();
+renderAgingTable();
+renderNoTaskChart();
 
 // Auto-reapply when radio changes
 document.querySelectorAll('[name=datetype]').forEach(r => r.addEventListener('change', applyFilters));
