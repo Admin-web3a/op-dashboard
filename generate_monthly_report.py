@@ -559,6 +559,7 @@ h2{font-size:15px;font-weight:600;margin:32px 0 14px;color:var(--text)}
 .heatmap-tbl th{background:#22253a;color:var(--muted);font-weight:600}
 .heatmap-tbl td:first-child{text-align:left;color:var(--text)}
 
+.stat-plan-hidden{display:none!important}
 @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
 </style>
 </head>
@@ -626,8 +627,8 @@ function triggerRefresh() {
   <div class="stat"><div class="stat-value" id="sv_conv">—</div><div class="stat-label">Конверсия в продажу</div></div>
   <div class="stat green" style="min-width:160px"><div class="stat-value" id="sv_revenue" style="font-size:20px">—</div><div class="stat-label">Выручка, ₽</div></div>
   <div class="stat" style="min-width:160px"><div class="stat-value" id="sv_avg" style="font-size:20px">—</div><div class="stat-label">Средний чек, ₽</div></div>
-  <div class="stat" id="sv_plan_card" style="display:none"><div class="stat-value" id="sv_plan">—</div><div class="stat-label">% плана</div></div>
-  <div class="stat" id="sv_forecast_card" style="display:none"><div class="stat-value" id="sv_forecast" style="font-size:20px">—</div><div class="stat-label">Прогноз выручки, ₽</div></div>
+  <div class="stat stat-plan-hidden" id="sv_plan_card"><div class="stat-value" id="sv_plan">—</div><div class="stat-label">% плана</div></div>
+  <div class="stat stat-plan-hidden" id="sv_forecast_card"><div class="stat-value" id="sv_forecast" style="font-size:20px">—</div><div class="stat-label">Прогноз выручки, ₽</div></div>
 </div>
 
 <!-- ── Daily chart ── -->
@@ -984,7 +985,7 @@ function updateGroupBCards(fromTs, toTs, fromStr, toStr) {
     const pctEl = document.getElementById('sv_plan');
     pctEl.textContent = pct + '%';
     pctEl.style.color = pct >= 100 ? 'var(--green)' : pct >= 70 ? 'var(--orange)' : 'var(--red)';
-    if (planCard) planCard.style.display = '';
+    if (planCard) planCard.classList.remove('stat-plan-hidden');
 
     // Forecast only for the current calendar month
     const now    = new Date();
@@ -996,13 +997,13 @@ function updateGroupBCards(fromTs, toTs, fromStr, toStr) {
       const elapsedDays = Math.max(1, Math.min(totalDays, Math.round((now.getTime() - startMs) / 86400000)));
       const forecast = Math.round(revenue * totalDays / elapsedDays);
       document.getElementById('sv_forecast').textContent = numFmt(forecast);
-      if (fcastCard) fcastCard.style.display = '';
+      if (fcastCard) fcastCard.classList.remove('stat-plan-hidden');
     } else {
-      if (fcastCard) fcastCard.style.display = 'none';
+      if (fcastCard) fcastCard.classList.add('stat-plan-hidden');
     }
   } else {
-    if (planCard)  planCard.style.display  = 'none';
-    if (fcastCard) fcastCard.style.display = 'none';
+    if (planCard)  planCard.classList.add('stat-plan-hidden');
+    if (fcastCard) fcastCard.classList.add('stat-plan-hidden');
   }
 }
 
