@@ -1,0 +1,21 @@
+{
+  "_comment": "Плановые показатели по месяцам. Ключ — YYYY-MM. Заполните revenue (₽) для каждого менеджера.",
+  "2026-07": {
+    "managers": {
+      "12377210": { "revenue": 0 },
+      "11176694": { "revenue": 0 },
+      "6461602":  { "revenue": 0 },
+      "11181290": { "revenue": 0 },
+      "9948090":  { "revenue": 0 },
+      "11068965": { "revenue": 0 },
+      "10293970": { "revenue": 0 },
+      "12738086": { "revenue": 0 },
+      "11356530": { "revenue": 0 },
+      "6976552":  { "revenue": 0 }
+    },
+    "aging_yellow_days": 7,
+    "aging_red_days": 14,
+    "sla_yellow_hours": 4,
+    "sla_red_hours": 24
+  }
+}

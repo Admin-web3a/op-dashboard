@@ -290,6 +290,25 @@ def fetch_contacts_phones(contact_ids):
     return result
 
 
+# ── Plans ─────────────────────────────────────────────────────────────────────
+
+def load_plans():
+    """Load plans.json; returns empty dict if file not found or invalid."""
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "plans.json")
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        data.pop("_comment", None)
+        print(f"  Loaded plans.json ({len(data)} period(s))")
+        return data
+    except FileNotFoundError:
+        print("  plans.json not found — plan cards will be hidden")
+        return {}
+    except Exception as e:
+        print(f"  Warning loading plans.json: {e}")
+        return {}
+
+
 # ── Build ─────────────────────────────────────────────────────────────────────
 
 def build_report():
@@ -405,6 +424,7 @@ def build_report():
     mgr_map = {str(k): v for k, v in MANAGERS.items()}
 
     now_str = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    plans   = load_plans()
 
     return {
         "leads":        leads_data,
@@ -413,6 +433,7 @@ def build_report():
         "managers":     mgr_map,
         "updated_at":   now_str,
         "fetch_from":   FETCH_FROM,
+        "plans":        plans,
     }
 
 
@@ -535,18 +556,33 @@ function triggerRefresh() {
   <button onclick="applyFilters()">Применить</button>
 </div>
 
-<!-- ── Stat cards ── -->
-<div class="stat-row">
-  <div class="stat"><div class="stat-value" id="sv_total">—</div><div class="stat-label">Всего лидов</div></div>
-  <div class="stat accent"><div class="stat-value" id="sv_active">—</div><div class="stat-label">В работе</div></div>
-  <div class="stat orange"><div class="stat-value" id="sv_ndz">—</div><div class="stat-label">НДЗ</div></div>
-  <div class="stat blue"><div class="stat-value" id="sv_offer">—</div><div class="stat-label">Оффер озвучен</div></div>
-  <div class="stat blue"><div class="stat-value" id="sv_delayed">—</div><div class="stat-label">Отложенный спрос</div></div>
-  <div class="stat purple"><div class="stat-value" id="sv_invoiced">—</div><div class="stat-label">Выставлен счет</div></div>
+<!-- ── Stat cards: Group A — snapshot ── -->
+<div style="display:flex;align-items:baseline;gap:10px;margin:4px 0 8px">
+  <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">Сейчас в воронке</span>
+  <span style="font-size:11px;color:#555">Снимок всех открытых сделок · не зависит от фильтра дат</span>
+</div>
+<div class="stat-row" style="margin-bottom:20px">
+  <div class="stat accent"><div class="stat-value" id="sv_a_work">—</div><div class="stat-label">В работе</div></div>
+  <div class="stat orange"><div class="stat-value" id="sv_a_ndz">—</div><div class="stat-label">НДЗ</div></div>
+  <div class="stat blue"><div class="stat-value" id="sv_a_offer">—</div><div class="stat-label">Оффер озвучен</div></div>
+  <div class="stat blue"><div class="stat-value" id="sv_a_delayed">—</div><div class="stat-label">Отложенный спрос</div></div>
+  <div class="stat purple"><div class="stat-value" id="sv_a_inv">—</div><div class="stat-label">Выставлен счёт</div></div>
+</div>
+
+<!-- ── Stat cards: Group B — period ── -->
+<div style="display:flex;align-items:baseline;gap:10px;margin:0 0 8px">
+  <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">За период</span>
+  <span id="period-label" style="font-size:12px;font-weight:600;color:var(--text)"></span>
+  <span style="font-size:11px;color:#555">Новые лиды по дате создания · Продажи по дате закрытия / оплаты</span>
+</div>
+<div class="stat-row" style="margin-bottom:8px">
+  <div class="stat"><div class="stat-value" id="sv_new">—</div><div class="stat-label">Новых лидов</div></div>
   <div class="stat green"><div class="stat-value" id="sv_sales">—</div><div class="stat-label">Продажи</div></div>
   <div class="stat"><div class="stat-value" id="sv_conv">—</div><div class="stat-label">Конверсия в продажу</div></div>
-  <div class="stat green" style="min-width:180px"><div class="stat-value" id="sv_revenue" style="font-size:20px">—</div><div class="stat-label">Сумма сделок, ₽</div></div>
-  <div class="stat" style="min-width:180px"><div class="stat-value" id="sv_avg" style="font-size:20px">—</div><div class="stat-label">Средний чек, ₽</div></div>
+  <div class="stat green" style="min-width:160px"><div class="stat-value" id="sv_revenue" style="font-size:20px">—</div><div class="stat-label">Выручка, ₽</div></div>
+  <div class="stat" style="min-width:160px"><div class="stat-value" id="sv_avg" style="font-size:20px">—</div><div class="stat-label">Средний чек, ₽</div></div>
+  <div class="stat" id="sv_plan_card" style="display:none"><div class="stat-value" id="sv_plan">—</div><div class="stat-label">% плана</div></div>
+  <div class="stat" id="sv_forecast_card" style="display:none"><div class="stat-value" id="sv_forecast" style="font-size:20px">—</div><div class="stat-label">Прогноз выручки, ₽</div></div>
 </div>
 
 <!-- ── Daily chart ── -->
@@ -790,19 +826,19 @@ function applyFilters() {
     mode === 'created' ? 'Лиды по дням (дата создания)' : 'Сделки по дням (дата закрытия / оплаты)';
 
   const leads = filterLeads(fromTs, toTs, mode);
-  renderAll(leads, mode, fromStr, toStr);
+  renderAll(leads, mode, fromStr, toStr, fromTs, toTs);
 }
 
 // ── Render all ───────────────────────────────────────────────────────────────
 
-function renderAll(leads, mode, fromStr, toStr) {
-  updateStatCards(leads);
+function renderAll(leads, mode, fromStr, toStr, fromTs, toTs) {
+  updateGroupBCards(fromTs, toTs, fromStr, toStr);
   renderDailyChart(leads, mode, fromStr, toStr);
   renderOverdueChart(leads);
   renderFunnelChart(leads);
   renderCohortTable(leads);
   renderConvWeekChart(leads);
-  renderRevenueChart(leads);
+  renderRevenueChart(leads, fromStr ? fromStr.slice(0,7) : null);
   renderSalesCntChart(leads);
   renderConvMgrChart(leads);
   renderAvgCheckChart(leads);
@@ -822,36 +858,92 @@ function grpOf(lead) {
 }
 function vizGrpOf(lead) { return VIZ_GROUP[grpOf(lead)] || 'in_work'; }
 
-function updateStatCards(leads) {
-  const total   = leads.length;
-  let ndz=0,offer=0,delayed=0,invoiced=0,sales=0,revenue=0;
-  let inWork=0,contact=0,qualified=0;
-  for (const l of leads) {
+// Group A: pipeline snapshot (active_leads, no date filter)
+function initGroupACards() {
+  let work=0, ndz=0, offer=0, delayed=0, invoiced=0;
+  for (const l of DATA.active_leads) {
     const g = grpOf(l);
-    if (g==='ndz')      ndz++;
+    if (g==='in_work'||g==='contact'||g==='qualified') work++;
+    else if (g==='ndz')      ndz++;
     else if (g==='offer')    offer++;
     else if (g==='delayed')  delayed++;
     else if (g==='invoiced') invoiced++;
-    else if (g==='sale')   { sales++; revenue += l.price||0; }
-    else if (g==='in_work')  inWork++;
-    else if (g==='contact')  contact++;
-    else if (g==='qualified') qualified++;
   }
-  const active = inWork + contact + qualified;
-  const inWorkTotal = inWork + contact + qualified + ndz + offer + delayed + invoiced + sales;
-  const conv = inWorkTotal>0 ? (sales/inWorkTotal*100).toFixed(1)+'%' : '—';
-  const avg = sales>0 ? Math.round(revenue/sales) : 0;
+  document.getElementById('sv_a_work').textContent    = numFmt(work);
+  document.getElementById('sv_a_ndz').textContent     = numFmt(ndz);
+  document.getElementById('sv_a_offer').textContent   = numFmt(offer);
+  document.getElementById('sv_a_delayed').textContent = numFmt(delayed);
+  document.getElementById('sv_a_inv').textContent     = numFmt(invoiced);
+}
 
-  document.getElementById('sv_total').textContent    = numFmt(total);
-  document.getElementById('sv_active').textContent   = numFmt(active);
-  document.getElementById('sv_ndz').textContent      = numFmt(ndz);
-  document.getElementById('sv_offer').textContent    = numFmt(offer);
-  document.getElementById('sv_delayed').textContent  = numFmt(delayed);
-  document.getElementById('sv_invoiced').textContent = numFmt(invoiced);
-  document.getElementById('sv_sales').textContent    = numFmt(sales);
-  document.getElementById('sv_conv').textContent     = conv;
-  document.getElementById('sv_revenue').textContent  = numFmt(revenue);
-  document.getElementById('sv_avg').textContent      = avg>0 ? numFmt(avg) : '—';
+// Group B: period metrics (fixed attribution: new leads by created_at, sales by closed_at/payment)
+function updateGroupBCards(fromTs, toTs, fromStr, toStr) {
+  const leadsCreated = DATA.leads.filter(l => l.c && l.c >= fromTs && l.c <= toTs);
+  const leadsClosed  = DATA.leads.filter(l => {
+    const ts = l.x || l.p || null;
+    return ts !== null && ts >= fromTs && ts <= toTs;
+  });
+
+  const newLeads = leadsCreated.length;
+  let sales=0, revenue=0;
+  for (const l of leadsClosed) {
+    if (grpOf(l)==='sale') { sales++; revenue += l.price||0; }
+  }
+  // Conversion: sales (closing attribution) / взято-в-работу (creation attribution)
+  const inWorkCnt = leadsCreated.filter(l => (FUNNEL_POS[grpOf(l)]||0) >= 2).length;
+  const conv = inWorkCnt > 0 ? (sales/inWorkCnt*100).toFixed(1)+'%' : '—';
+  const avg  = sales > 0 ? Math.round(revenue/sales) : 0;
+
+  // Period label
+  const mNames = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+  const fd = new Date(fromStr+'T00:00:00Z'), td = new Date(toStr+'T00:00:00Z');
+  const periodKey = fromStr ? fromStr.slice(0,7) : null;
+  const labelEl = document.getElementById('period-label');
+  if (labelEl) {
+    if (fd.getUTCFullYear()===td.getUTCFullYear() && fd.getUTCMonth()===td.getUTCMonth())
+      labelEl.textContent = mNames[fd.getUTCMonth()] + ' ' + fd.getUTCFullYear();
+    else
+      labelEl.textContent = fromStr + ' — ' + toStr;
+  }
+
+  document.getElementById('sv_new').textContent     = numFmt(newLeads);
+  document.getElementById('sv_sales').textContent   = numFmt(sales);
+  document.getElementById('sv_conv').textContent    = conv;
+  document.getElementById('sv_revenue').textContent = numFmt(revenue);
+  document.getElementById('sv_avg').textContent     = avg > 0 ? numFmt(avg) : '—';
+
+  // Plan-based cards
+  const plan = DATA.plans && periodKey ? DATA.plans[periodKey] : null;
+  const planMgrs = plan && plan.managers ? Object.values(plan.managers) : [];
+  const planRevTotal = planMgrs.reduce((s, m) => s + (m.revenue||0), 0);
+  const planCard  = document.getElementById('sv_plan_card');
+  const fcastCard = document.getElementById('sv_forecast_card');
+
+  if (plan && planRevTotal > 0) {
+    const pct   = Math.round(revenue / planRevTotal * 100);
+    const pctEl = document.getElementById('sv_plan');
+    pctEl.textContent = pct + '%';
+    pctEl.style.color = pct >= 100 ? 'var(--green)' : pct >= 70 ? 'var(--orange)' : 'var(--red)';
+    if (planCard) planCard.style.display = '';
+
+    // Forecast only for the current calendar month
+    const now    = new Date();
+    const curKey = now.toISOString().slice(0,7);
+    if (periodKey === curKey) {
+      const startMs   = new Date(fromStr+'T00:00:00Z').getTime();
+      const endMs     = new Date(toStr  +'T23:59:59Z').getTime();
+      const totalDays   = Math.round((endMs - startMs) / 86400000);
+      const elapsedDays = Math.max(1, Math.min(totalDays, Math.round((now.getTime() - startMs) / 86400000)));
+      const forecast = Math.round(revenue * totalDays / elapsedDays);
+      document.getElementById('sv_forecast').textContent = numFmt(forecast);
+      if (fcastCard) fcastCard.style.display = '';
+    } else {
+      if (fcastCard) fcastCard.style.display = 'none';
+    }
+  } else {
+    if (planCard)  planCard.style.display  = 'none';
+    if (fcastCard) fcastCard.style.display = 'none';
+  }
 }
 
 // ── Daily chart ──────────────────────────────────────────────────────────────
@@ -1141,17 +1233,55 @@ function _salesByMgr(leads) {
   return {rev, cnt};
 }
 
-function renderRevenueChart(leads) {
+function renderRevenueChart(leads, periodKey) {
   const {rev, cnt} = _salesByMgr(leads);
   const usedIds = MGR_IDS.filter(u => rev[u]>0).sort((a,b) => rev[b]-rev[a]);
   if (!usedIds.length) { upsertChart('revenueChart',{type:'bar',data:{labels:['Нет данных'],datasets:[{data:[0]}]},options:{plugins:{datalabels:{display:false}},scales:{x:{ticks:{color:'#777'}},y:{ticks:{color:'#777'}}}}}); return; }
+
+  const datasets = [{
+    label: 'Выручка',
+    data: usedIds.map(u=>rev[u]),
+    backgroundColor: '#6ab04c',
+    borderRadius: 4,
+    order: 2,
+  }];
+
+  const plan = DATA.plans && periodKey ? DATA.plans[periodKey] : null;
+  if (plan && plan.managers) {
+    const planRevData = usedIds.map(u => {
+      const v = plan.managers[String(u)];
+      return v && v.revenue > 0 ? v.revenue : null;
+    });
+    if (planRevData.some(v => v !== null)) {
+      datasets.push({
+        type: 'line',
+        label: 'План',
+        data: planRevData,
+        borderColor: '#ffd32a',
+        borderDash: [5, 4],
+        borderWidth: 2,
+        pointRadius: 5,
+        pointHoverRadius: 7,
+        pointBackgroundColor: '#ffd32a',
+        pointBorderColor: '#ffd32a',
+        fill: false,
+        order: 1,
+        datalabels: { display: false },
+      });
+    }
+  }
+
+  const hasLegend = datasets.length > 1;
   upsertChart('revenueChart',{type:'bar',
-    data:{labels:usedIds.map(u=>MANAGERS[u]),
-          datasets:[{data:usedIds.map(u=>rev[u]),backgroundColor:'#6ab04c',borderRadius:4}]},
+    data:{labels:usedIds.map(u=>MANAGERS[u]), datasets},
     options:{responsive:true,
-      plugins:{legend:{display:false},
-        datalabels:{color:'#ccc',font:{size:10},anchor:'end',align:'top',
-          formatter:v=>v>=1e6?(v/1e6).toFixed(1).replace('.',',')+' млн':v>0?v.toLocaleString('ru-RU'):''}},
+      plugins:{
+        legend:{display:hasLegend,position:'bottom',labels:{color:'#aaa',font:{size:10},boxWidth:12}},
+        datalabels:{
+          display: ctx => ctx.datasetIndex === 0,
+          color:'#ccc',font:{size:10},anchor:'end',align:'top',
+          formatter:v=>v>=1e6?(v/1e6).toFixed(1).replace('.',',')+' млн':v>0?v.toLocaleString('ru-RU'):''
+        }},
       scales:{x:{ticks:{color:'#aaa',maxRotation:35,font:{size:10}},grid:{display:false}},
               y:{ticks:{color:'#777'},grid:{color:'#1f2235'}} } }});
 }
@@ -1383,6 +1513,9 @@ const nowM = new Date();
 const curKey = nowM.toISOString().slice(0,7);
 const sel = document.getElementById('month_quick');
 for (const opt of sel.options) { if (opt.value===curKey) { opt.selected=true; break; } }
+
+// Group A: snapshot cards (drawn once, not affected by date filter)
+initGroupACards();
 
 applyFilters();
 
