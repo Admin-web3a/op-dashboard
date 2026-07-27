@@ -23,6 +23,7 @@ FETCH_FROM  = 1751328000     # 2026-07-01 00:00 UTC — start of first tracked m
 CAPITAL_FIELD_ID   = 1304047
 READY_FIELD_ID     = 1317111
 REASON_FIELD_ID    = 180637
+TARIFF_FIELD_ID    = 1315345
 PAYMENT_DATE_NAME  = "Дата оплаты"   # will be resolved at runtime
 
 TEST_REASON = "ТЕСТ"
@@ -393,6 +394,7 @@ def build_report():
         reason_val = None
         capital_val = None
         ready_val = None
+        tariff_val = None
         payment_ts = None
 
         for cf in (lead.get("custom_fields_values") or []):
@@ -407,6 +409,8 @@ def build_report():
                 capital_val = v
             elif fid == READY_FIELD_ID:
                 ready_val = v
+            elif fid == TARIFF_FIELD_ID:
+                tariff_val = v
             elif payment_date_fid and fid == payment_date_fid and v:
                 try:
                     payment_ts = int(v)
@@ -434,6 +438,7 @@ def build_report():
             "capital": capital_val,
             "ready":   ready_val,
             "reason":  reason_val,
+            "tariff":  tariff_val,
             "country": country,
             "tod":     tasks_od.get(lid, 0),     # overdue task count
         })
@@ -727,10 +732,16 @@ function triggerRefresh() {
   <h2>Статусы по странам (топ-10)</h2>
   <div class="chart-wrap"><canvas id="countryStatusChart" height="120"></canvas></div>
 </div>
-<!-- ── Close reasons ── -->
-<div class="section">
-  <h2>Причины закрытия сделок</h2>
-  <div class="chart-wrap"><canvas id="reasonChart" height="120"></canvas></div>
+<!-- ── Tariff & Close reasons ── -->
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start">
+  <div class="section">
+    <h2>Продажи по тарифам</h2>
+    <div class="chart-wrap" style="height:320px"><canvas id="tariffChart"></canvas></div>
+  </div>
+  <div class="section">
+    <h2>Причины закрытия сделок</h2>
+    <div class="chart-wrap" style="height:320px"><canvas id="reasonChart"></canvas></div>
+  </div>
 </div>
 
 <!-- ── Manager detail table ── -->
@@ -908,6 +919,7 @@ function renderAll(leads, mode, fromStr, toStr, fromTs, toTs) {
   renderCountryChart(leads);
   renderCountryStatusChart(leads);
   renderReasonChart(leads);
+  renderTariffChart(leads);
   renderMgrTable(leads);
 }
 
@@ -1646,6 +1658,61 @@ function renderReasonChart(leads) {
         datalabels:{color:'#ccc',font:{size:11},anchor:'end',align:'end',formatter:v=>v>0?v:''}},
       scales:{x:{ticks:{color:'#777'},grid:{color:'#1f2235'}},
               y:{ticks:{color:'#ccc',font:{size:11}},grid:{display:false}}} }});
+}
+
+// ── Tariff chart ─────────────────────────────────────────────────────────────
+
+function renderTariffChart(leads) {
+  const palette = [
+    '#4f8ef7','#6ab04c','#f5a623','#a29bfe','#fd79a8','#00cec9',
+    '#e17055','#fdcb6e','#74b9ff','#55efc4','#b2bec3','#636e72'
+  ];
+  const counts = {};
+  for (const l of leads) {
+    if (grpOf(l) !== 'sale') continue;
+    const t = l.tariff || 'Не указан';
+    counts[t] = (counts[t] || 0) + 1;
+  }
+  const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  if (!sorted.length) {
+    upsertChart('tariffChart', {type:'bar', data:{labels:['Нет данных'], datasets:[{data:[0]}]},
+      options:{plugins:{datalabels:{display:false}}, scales:{x:{ticks:{color:'#777'}}, y:{ticks:{color:'#777'}}}}});
+    return;
+  }
+  const labels = sorted.map(([t]) => t);
+  const values = sorted.map(([, v]) => v);
+  const total  = values.reduce((a, b) => a + b, 0);
+  upsertChart('tariffChart', {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Продаж',
+        data: values,
+        backgroundColor: labels.map((_, i) => palette[i % palette.length]),
+        borderRadius: 4,
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      maintainAspectRatio: false,
+      responsive: true,
+      plugins: {
+        legend: {display: false},
+        tooltip: {callbacks: {label: function(c) {
+          return ' ' + c.raw + ' сделок (' + Math.round(c.raw / total * 100) + '%)';
+        }}},
+        datalabels: {
+          color: '#ccc', font: {size: 11}, anchor: 'end', align: 'end',
+          formatter: (v) => v > 0 ? v : ''
+        }
+      },
+      scales: {
+        x: {beginAtZero: true, ticks: {color: '#e8eaf0', stepSize: 1}, grid: {color: '#1e2a3a'}},
+        y: {ticks: {color: '#e8eaf0', font: {size: 12}}, grid: {color: '#1e2a3a'}}
+      }
+    }
+  });
 }
 
 // ── Manager detail table ─────────────────────────────────────────────────────
