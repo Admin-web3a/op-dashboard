@@ -813,7 +813,10 @@ function pctFmt(n,d) { return d>0 ? Math.round(n/d*100)+'%' : '0%'; }
 function tsToDate(ts) { return ts ? new Date(ts*1000) : null; }
 function dateStr(d) {
   if (!d) return null;
-  return d.toISOString().slice(0,10);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 function addDays(d, n) { const r=new Date(d); r.setUTCDate(r.getUTCDate()+n); return r; }
 function mondayOf(d) {
@@ -891,8 +894,8 @@ function applyFilters() {
   const toStr   = document.getElementById('date_to').value;
   if (!fromStr || !toStr) return;
 
-  const fromTs = Math.floor(new Date(fromStr+'T00:00:00Z').getTime()/1000);
-  const toTs   = Math.floor(new Date(toStr +'T23:59:59Z').getTime()/1000);
+  const fromTs = Math.floor(new Date(fromStr+'T00:00:00').getTime()/1000);
+  const toTs   = Math.floor(new Date(toStr +'T23:59:59').getTime()/1000);
 
   document.getElementById('daily_title').textContent =
     mode === 'created' ? 'Лиды по дням (дата создания)' : 'Сделки по дням (дата закрытия / оплаты)';
@@ -969,7 +972,7 @@ function updateGroupBCards(fromTs, toTs, fromStr, toStr) {
 
   // Period label
   const mNames = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
-  const fd = new Date(fromStr+'T00:00:00Z'), td = new Date(toStr+'T00:00:00Z');
+  const fd = new Date(fromStr+'T00:00:00'), td = new Date(toStr+'T00:00:00');
   const periodKey = fromStr ? fromStr.slice(0,7) : null;
   const labelEl = document.getElementById('period-label');
   if (labelEl) {
@@ -1003,8 +1006,8 @@ function updateGroupBCards(fromTs, toTs, fromStr, toStr) {
     const now    = new Date();
     const curKey = now.toISOString().slice(0,7);
     if (periodKey === curKey) {
-      const startMs   = new Date(fromStr+'T00:00:00Z').getTime();
-      const endMs     = new Date(toStr  +'T23:59:59Z').getTime();
+      const startMs   = new Date(fromStr+'T00:00:00').getTime();
+      const endMs     = new Date(toStr  +'T23:59:59').getTime();
       const totalDays   = Math.round((endMs - startMs) / 86400000);
       const elapsedDays = Math.max(1, Math.min(totalDays, Math.round((now.getTime() - startMs) / 86400000)));
       const forecast = Math.round(revenue * totalDays / elapsedDays);
@@ -1024,8 +1027,8 @@ function updateGroupBCards(fromTs, toTs, fromStr, toStr) {
 function renderDailyChart(leads, mode, fromStr, toStr) {
   const counts = {};
   // Pre-fill every day in range
-  let d = new Date(fromStr+'T00:00:00Z');
-  const end = new Date(toStr+'T00:00:00Z');
+  let d = new Date(fromStr+'T00:00:00');
+  const end = new Date(toStr+'T00:00:00');
   while (d <= end) { counts[dateStr(d)] = 0; d = addDays(d,1); }
 
   for (const l of leads) {
