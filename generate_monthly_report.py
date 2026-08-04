@@ -859,7 +859,7 @@ function populateMonthDropdown() {
   }
   months.forEach((m, i) => {
     const opt = document.createElement('option');
-    opt.value = m.toISOString().slice(0,7); // YYYY-MM
+    opt.value = m.getFullYear() + '-' + String(m.getMonth() + 1).padStart(2, '0'); // YYYY-MM local
     const mNames = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
     opt.textContent = mNames[m.getMonth()] + ' ' + m.getFullYear();
     if (i === 0) opt.selected = true;
