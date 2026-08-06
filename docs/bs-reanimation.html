@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>БС Реанимация — ОП Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+<style>
+  :root{--bg:#0f172a;--surface:#1e293b;--border:#334155;--text:#f1f5f9;--muted:#94a3b8;--accent:#38bdf8}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;padding:20px}
+  h1{font-size:1.4rem;font-weight:700;margin-bottom:4px}
+  .meta{color:var(--muted);font-size:.85rem;margin-bottom:20px}
+  .meta a{color:var(--accent);text-decoration:none}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin-bottom:24px}
+  .stat{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px 16px}
+  .stat-val{font-size:1.8rem;font-weight:700;line-height:1.1}
+  .stat-lbl{font-size:.8rem;color:var(--muted);margin-top:4px}
+  .stat-val.green{color:#6ab04c}.stat-val.red{color:#eb4d4b}.stat-val.yellow{color:#f5a623}.stat-val.blue{color:#38bdf8}
+  h2{font-size:1rem;font-weight:600;margin:24px 0 10px}
+  .chart-card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:20px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:768px){.grid2{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<h1>БС Реанимация — Основная воронка ОП</h1>
+<div class="meta">Тег: быстрыйстартреанимация &nbsp;·&nbsp; Обновлено: 06.08.2026 10:47 МСК &nbsp;·&nbsp;
+  <a href="/op-dashboard/">← op-dashboard</a></div>
+
+<div class="stats">
+  <div class="stat"><div class="stat-val blue">618</div><div class="stat-lbl">Всего лидов</div></div>
+  <div class="stat"><div class="stat-val green">39</div><div class="stat-lbl">Продажи</div></div>
+  <div class="stat"><div class="stat-val">252</div><div class="stat-lbl">В работе</div></div>
+  <div class="stat"><div class="stat-val red">327</div><div class="stat-lbl">Закрыто</div></div>
+  <div class="stat"><div class="stat-val yellow">233</div><div class="stat-lbl">Без задачи</div></div>
+  <div class="stat"><div class="stat-val red">94</div><div class="stat-lbl">Просрочено задач</div></div>
+</div>
+
+<h2>Лиды по дням (дата тега)</h2>
+<div class="chart-card" style="height:220px"><canvas id="dailyChart"></canvas></div>
+
+<h2>Лиды по менеджерам</h2>
+<div class="chart-card" style="height:500px"><canvas id="mgrChart"></canvas></div>
+
+<h2>Кумулятивная воронка</h2>
+<div class="chart-card" style="height:320px"><canvas id="funnelChart"></canvas></div>
+
+<h2>Контроль качества по менеджерам</h2>
+<div class="grid2">
+  <div>
+    <p style="font-size:.85rem;color:var(--muted);margin-bottom:8px">Без активной задачи</p>
+    <div class="chart-card" style="height:320px"><canvas id="noTaskChart"></canvas></div>
+  </div>
+  <div>
+    <p style="font-size:.85rem;color:var(--muted);margin-bottom:8px">Просроченные задачи</p>
+    <div class="chart-card" style="height:320px"><canvas id="overdueChart"></canvas></div>
+  </div>
+</div>
+
+<script>
+if(typeof ChartDataLabels !== 'undefined') Chart.unregister(ChartDataLabels);
+
+const DARK = {
+  color: '#f1f5f9',
+  borderColor: '#334155',
+  grid: { color: 'rgba(255,255,255,.06)' },
+};
+const base = {
+  responsive: true,
+  maintainAspectRatio: false,
+  plugins: {
+    legend: { labels: { color: DARK.color, boxWidth: 12, font: { size: 12 } } },
+    tooltip: { mode: 'index', intersect: false },
+  },
+  scales: {
+    x: { ticks: { color: DARK.color }, grid: DARK.grid },
+    y: { ticks: { color: DARK.color }, grid: DARK.grid },
+  },
+};
+
+// 1. Daily chart
+new Chart(document.getElementById('dailyChart'), {
+  type: 'bar',
+  data: {
+    labels: ["1 Aug", "2 Aug", "3 Aug", "4 Aug", "5 Aug", "6 Aug"],
+    datasets: [{ label: 'Лиды', data: [24, 17, 217, 191, 100, 69],
+      backgroundColor: 'rgba(56,189,248,.7)', borderColor: '#38bdf8',
+      borderWidth: 1, borderRadius: 3 }]
+  },
+  options: {...base,
+    plugins: {...base.plugins, legend: { display: false } },
+    scales: { x: { ...base.scales.x, ticks: { ...base.scales.x.ticks, maxRotation: 45, font: { size: 11 } } },
+               y: { ...base.scales.y } }
+  },
+});
+
+// 2. Manager stacked chart
+new Chart(document.getElementById('mgrChart'), {
+  type: 'bar',
+  data: { labels: ["Никита Саламатин", "Наталья", "Зверева Елена", "Сергей", "Денис Криницын", "Влад", "Кирилл", "Денис"], datasets: [{"label": "Взято в работу", "data": [33, 3, 2, 4, 0, 0, 0, 0], "backgroundColor": "#00cec9"}, {"label": "Контакт установлен", "data": [15, 18, 12, 5, 0, 0, 0, 0], "backgroundColor": "#ffd32a"}, {"label": "Квалифицирован", "data": [6, 5, 4, 0, 0, 0, 0, 0], "backgroundColor": "#ff6b81"}, {"label": "НДЗ", "data": [2, 25, 15, 3, 0, 0, 0, 0], "backgroundColor": "#f5a623"}, {"label": "Оффер озвучен", "data": [7, 2, 4, 4, 0, 0, 1, 0], "backgroundColor": "#7ed6df"}, {"label": "Отложен", "data": [31, 18, 16, 12, 0, 0, 0, 0], "backgroundColor": "#a29bfe"}, {"label": "Выставлен счёт", "data": [0, 0, 0, 2, 0, 0, 0, 0], "backgroundColor": "#fd79a8"}, {"label": "Экскурсия", "data": [1, 1, 0, 0, 0, 0, 0, 0], "backgroundColor": "#55efc4"}, {"label": "Продажа", "data": [9, 13, 7, 5, 0, 2, 1, 1], "backgroundColor": "#6ab04c"}, {"label": "Закрыто", "data": [13, 44, 20, 45, 17, 29, 21, 61], "backgroundColor": "#eb4d4b"}] },
+  options: {...base,
+    indexAxis: 'y',
+    scales: {
+      x: { ...base.scales.x, stacked: true },
+      y: { ...base.scales.y, stacked: true, ticks: { color: DARK.color } },
+    },
+  },
+});
+
+// 3. Cumulative funnel
+new Chart(document.getElementById('funnelChart'), {
+  type: 'bar',
+  data: {
+    labels: ["Взято в работу", "Контакт установлен", "Квалифицирован", "Оффер озвучен", "Продажа"],
+    datasets: [{
+      label: 'Лидов',
+      data: [291, 203, 153, 138, 39],
+      backgroundColor: ['#00cec9','#ffd32a','#ff6b81','#7ed6df','#6ab04c'],
+      borderRadius: 4,
+    }]
+  },
+  options: {...base,
+    indexAxis: 'y',
+    plugins: {
+      ...base.plugins,
+      legend: { display: false },
+      datalabels: { anchor: 'end', align: 'right', color: '#f1f5f9', font: { size: 12, weight: 'bold' } },
+    },
+    scales: { x: { ...base.scales.x }, y: { ...base.scales.y } },
+  },
+  plugins: [ChartDataLabels],
+});
+
+// 4. No-task chart
+new Chart(document.getElementById('noTaskChart'), {
+  type: 'bar',
+  data: {
+    labels: ["Денис", "Наталья", "Сергей", "Влад", "Кирилл", "Денис Криницын", "Никита Саламатин", "Зверева Елена"],
+    datasets: [{ label: 'Без задачи', data: [61, 39, 36, 31, 20, 17, 15, 14],
+      backgroundColor: 'rgba(245,166,35,.8)', borderRadius: 3 }]
+  },
+  options: {...base,
+    indexAxis: 'y',
+    plugins: {...base.plugins, legend: { display: false }},
+    scales: { x: { ...base.scales.x }, y: { ...base.scales.y } },
+  },
+});
+
+// 5. Overdue tasks chart
+new Chart(document.getElementById('overdueChart'), {
+  type: 'bar',
+  data: {
+    labels: ["Никита Саламатин", "Наталья", "Зверева Елена", "Влад", "Денис", "Сергей"],
+    datasets: [{ label: 'Просрочено', data: [80, 6, 4, 2, 1, 1],
+      backgroundColor: 'rgba(235,77,75,.8)', borderRadius: 3 }]
+  },
+  options: {...base,
+    indexAxis: 'y',
+    plugins: {...base.plugins, legend: { display: false }},
+    scales: { x: { ...base.scales.x }, y: { ...base.scales.y } },
+  },
+});
+</script>
+</body>
+</html>

@@ -30,15 +30,19 @@ jobs:
         env:
           AMO_TOKEN: ${{ secrets.AMO_TOKEN }}
         run: python generate_monthly_report.py
+      - name: Generate BS-reanimation dashboard
+        env:
+          AMO_TOKEN: ${{ secrets.AMO_TOKEN }}
+        run: python generate_bs_reanimation.py
       - name: Commit and push
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add docs/zapusk062026/index.html docs/index.html
+          git add docs/zapusk062026/index.html docs/index.html docs/bs-reanimation.html
           git diff --cached --quiet && exit 0
           git commit -m "chore: update dashboards $(date +'%Y-%m-%d %H:%M UTC')"
           git pull --rebase origin main \
-            || { git checkout --ours docs/zapusk062026/index.html docs/index.html; \
-                 git add docs/zapusk062026/index.html docs/index.html; \
+            || { git checkout --ours docs/zapusk062026/index.html docs/index.html docs/bs-reanimation.html; \
+                 git add docs/zapusk062026/index.html docs/index.html docs/bs-reanimation.html; \
                  git rebase --continue; }
           git push origin main
