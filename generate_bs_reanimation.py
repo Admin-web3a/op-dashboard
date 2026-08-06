@@ -21,8 +21,7 @@ from collections import Counter, defaultdict
 TOKEN  = os.environ["AMO_TOKEN"]
 DOMAIN = "simmihur.amocrm.ru"
 
-TAG_ID       = 244287
-UPDATED_FROM = 1785542400  # 2026-08-01 00:00 UTC
+TAG_NAME      = "быстрыйстартреанимация"
 PIPELINE_NAME = "Основная воронка ОП"
 
 MANAGERS = {
@@ -154,13 +153,22 @@ def fetch_pipelines():
 
 
 def fetch_leads(pipeline_id):
-    params = {
-        "filter[tag_id][]":         TAG_ID,
-        "filter[pipeline_id][]":    pipeline_id,
-        "filter[updated_at][from]": UPDATED_FROM,
-    }
-    leads = list(paginate("leads", params, limit=50, sleep=0.25))
-    print(f"  Загружено {len(leads)} лидов")
+    """
+    AMO API не поддерживает надёжную фильтрацию по tag_id.
+    Используем query-поиск по имени тега, затем проверяем тег клиентски.
+    """
+    raw = list(paginate("leads", {
+        "query": TAG_NAME,
+        "with":  "tags",
+    }, limit=50, sleep=0.25))
+
+    leads = [
+        l for l in raw
+        if l.get("pipeline_id") == pipeline_id
+        and any(t.get("name") == TAG_NAME
+                for t in (l.get("_embedded") or {}).get("tags") or [])
+    ]
+    print(f"  Найдено через query: {len(raw)}, отфильтровано (pipeline + тег): {len(leads)}")
     return leads
 
 
