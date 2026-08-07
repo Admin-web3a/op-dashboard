@@ -26,6 +26,13 @@ REASON_FIELD_ID    = 180637
 TARIFF_FIELD_ID    = 1315345
 PAYMENT_DATE_NAME  = "Дата оплаты"   # will be resolved at runtime
 
+# Stage transition date fields (for SLA and velocity)
+DATE_IN_WORK_FID  = 1318177  # Дата Взят в работу
+DATE_CONTACT_FID  = 1318179  # Дата Контакт установлен
+DATE_QUAL_FID     = 1318181  # Дата Квалифицирован
+DATE_OFFER_FID    = 1318183  # Дата Оффер озвучен
+DATE_INV_FID      = 1318187  # Дата Выставлен счет
+
 TEST_REASON = "ТЕСТ"
 
 MANAGERS = {
@@ -396,6 +403,7 @@ def build_report():
         ready_val = None
         tariff_val = None
         payment_ts = None
+        d_w = d_c = d_q = d_o = d_i = None  # stage transition timestamps
 
         for cf in (lead.get("custom_fields_values") or []):
             fid = cf.get("field_id")
@@ -416,6 +424,21 @@ def build_report():
                     payment_ts = int(v)
                 except (TypeError, ValueError):
                     pass
+            elif fid == DATE_IN_WORK_FID and v:
+                try: d_w = int(v)
+                except (TypeError, ValueError): pass
+            elif fid == DATE_CONTACT_FID and v:
+                try: d_c = int(v)
+                except (TypeError, ValueError): pass
+            elif fid == DATE_QUAL_FID and v:
+                try: d_q = int(v)
+                except (TypeError, ValueError): pass
+            elif fid == DATE_OFFER_FID and v:
+                try: d_o = int(v)
+                except (TypeError, ValueError): pass
+            elif fid == DATE_INV_FID and v:
+                try: d_i = int(v)
+                except (TypeError, ValueError): pass
 
         if reason_val == TEST_REASON:
             test_skipped += 1
@@ -441,6 +464,11 @@ def build_report():
             "tariff":  tariff_val,
             "country": country,
             "tod":     tasks_od.get(lid, 0),     # overdue task count
+            "d_w":     d_w,   # Дата Взят в работу
+            "d_c":     d_c,   # Дата Контакт установлен
+            "d_q":     d_q,   # Дата Квалифицирован
+            "d_o":     d_o,   # Дата Оффер озвучен
+            "d_i":     d_i,   # Дата Выставлен счет
         })
 
     print(f"  {len(leads_data)} leads processed, {test_skipped} ТЕСТ skipped")
@@ -661,6 +689,20 @@ function triggerRefresh() {
   <h2>Лиды без активной задачи, %</h2>
   <p style="color:var(--muted);font-size:12px;margin:-10px 0 14px">Доля открытых сделок без запланированной задачи (complete_till &gt; сейчас) по каждому менеджеру.</p>
   <div class="chart-wrap"><canvas id="noTaskChart" height="90"></canvas></div>
+</div>
+
+<!-- ── SLA: creation → in work ── -->
+<div class="section">
+  <h2>SLA: создание лида → взято в работу (часы)</h2>
+  <p style="color:var(--muted);font-size:12px;margin:-10px 0 14px">Среднее время от создания лида до перевода в «Взято в работу» для лидов выбранного периода. Пунктир — норматив из <code>plans.json</code> (по умолчанию 4 ч).</p>
+  <div class="chart-wrap"><canvas id="slaChart" height="90"></canvas></div>
+</div>
+
+<!-- ── Velocity table ── -->
+<div class="section">
+  <h2>Скорость воронки по менеджерам (дней между этапами)</h2>
+  <p style="color:var(--muted);font-size:12px;margin:-10px 0 14px">Среднее время перехода между ключевыми этапами для лидов выбранного периода. Только лиды, прошедшие оба этапа.</p>
+  <div id="velocityTableWrap"></div>
 </div>
 
 <!-- ── Overdue ── -->
@@ -909,6 +951,8 @@ function applyFilters() {
 function renderAll(leads, mode, fromStr, toStr, fromTs, toTs) {
   updateGroupBCards(fromTs, toTs, fromStr, toStr);
   renderDailyChart(leads, mode, fromStr, toStr);
+  renderSlaChart(leads, fromTs, toTs);
+  renderVelocityTable(leads, fromTs, toTs);
   renderOverdueChart(leads);
   renderFunnelChart(leads);
   renderCohortTable(leads);
@@ -1193,6 +1237,144 @@ function renderNoTaskChart() {
         y:{ticks:{color:'#777',callback:v=>v+'%'},grid:{color:'#1f2235'},max:100}
       }}
   });
+}
+
+// ── SLA: created → in-work ───────────────────────────────────────────────────
+
+function renderSlaChart(leads, fromTs, toTs) {
+  const curPeriod = new Date().toISOString().slice(0,7);
+  const planData  = DATA.plans ? (DATA.plans[curPeriod] || {}) : {};
+  const normH     = planData.sla_yellow_hours || 4;
+  const redH      = planData.sla_red_hours    || 24;
+
+  // Only leads that were taken in-work during the selected period
+  const stats = {};
+  for (const uid of MGR_IDS) stats[uid] = {n: 0, sumH: 0, ok: 0, yellow: 0, red: 0};
+
+  for (const l of DATA.leads) {
+    if (!l.d_w || l.d_w < fromTs || l.d_w > toTs) continue;
+    if (!l.c) continue;
+    const s = stats[l.mgr];
+    if (!s) continue;
+    const h = (l.d_w - l.c) / 3600;
+    if (h < 0) continue; // data anomaly
+    s.n++;
+    s.sumH += h;
+    if (h <= normH)      s.ok++;
+    else if (h <= redH)  s.yellow++;
+    else                 s.red++;
+  }
+
+  const used = MGR_IDS.filter(u => stats[u].n > 0)
+    .map(u => ({u, avg: stats[u].sumH / stats[u].n, ...stats[u]}))
+    .sort((a, b) => a.avg - b.avg); // best first
+
+  if (!used.length) {
+    upsertChart('slaChart', {type:'bar', data:{labels:['Нет данных'], datasets:[{data:[0]}]},
+      options:{plugins:{datalabels:{display:false}}, scales:{x:{ticks:{color:'#777'}}, y:{ticks:{color:'#777'}}}}});
+    return;
+  }
+
+  upsertChart('slaChart', {
+    type: 'bar',
+    data: {
+      labels: used.map(x => MANAGERS[x.u]),
+      datasets: [{
+        label: 'Среднее SLA, ч',
+        data:  used.map(x => +x.avg.toFixed(1)),
+        backgroundColor: used.map(x =>
+          x.avg <= normH ? '#6ab04c' : x.avg <= redH ? '#f5a623' : '#eb4d4b'),
+        borderRadius: 4,
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: {display: false},
+        annotation: {annotations: {norm: {
+          type: 'line', yMin: normH, yMax: normH,
+          borderColor: '#f5a623', borderWidth: 1.5, borderDash: [5,4],
+          label: {content: 'Норма ' + normH + 'ч', display: true,
+                  color: '#f5a623', font: {size: 10}, position: 'end'}
+        }}},
+        datalabels: {
+          color: '#ccc', font: {size: 10}, anchor: 'end', align: 'top',
+          formatter: (v, ctx) => {
+            const d = used[ctx.dataIndex];
+            const pct = Math.round(d.ok / d.n * 100);
+            return v + 'ч (' + pct + '% в норме)';
+          }
+        }
+      },
+      scales: {
+        x: {ticks: {color: '#aaa', maxRotation: 35, font: {size: 10}}, grid: {display: false}},
+        y: {ticks: {color: '#777', callback: v => v + 'ч'}, grid: {color: '#1f2235'}, beginAtZero: true}
+      }
+    }
+  });
+}
+
+// ── Stage velocity table ──────────────────────────────────────────────────────
+
+function renderVelocityTable(leads, fromTs, toTs) {
+  // Stages: c→d_w, d_w→d_c, d_c→d_q, d_q→d_o
+  const stages = [
+    {key: 'c_iw',  label: 'Новый → В работу',         from: 'c',   to: 'd_w', unit: 'ч'},
+    {key: 'iw_ct', label: 'В работе → Контакт',        from: 'd_w', to: 'd_c', unit: 'ч'},
+    {key: 'ct_qu', label: 'Контакт → Квалифицирован',  from: 'd_c', to: 'd_q', unit: 'дн'},
+    {key: 'qu_of', label: 'Квалиф. → Оффер озвучен',  from: 'd_q', to: 'd_o', unit: 'дн'},
+  ];
+
+  // Only leads taken in-work during selected period
+  const mgr_stats = {};
+  for (const uid of MGR_IDS) {
+    mgr_stats[uid] = {};
+    for (const st of stages) mgr_stats[uid][st.key] = {n: 0, sum: 0};
+  }
+
+  for (const l of DATA.leads) {
+    if (!l.d_w || l.d_w < fromTs || l.d_w > toTs) continue;
+    const ms = mgr_stats[l.mgr];
+    if (!ms) continue;
+    for (const st of stages) {
+      const t1 = l[st.from], t2 = l[st.to];
+      if (!t1 || !t2 || t2 <= t1) continue;
+      const diff = st.unit === 'ч' ? (t2 - t1) / 3600 : (t2 - t1) / 86400;
+      ms[st.key].n++;
+      ms[st.key].sum += diff;
+    }
+  }
+
+  const rows = MGR_IDS
+    .filter(u => stages.some(st => mgr_stats[u][st.key].n > 0))
+    .map(u => ({u, stats: mgr_stats[u]}));
+
+  const wrap = document.getElementById('velocityTableWrap');
+  if (!rows.length) { wrap.innerHTML = '<p style="color:#555;font-size:12px">Нет данных за выбранный период</p>'; return; }
+
+  const TH = 'background:#22253a;color:var(--muted);font-size:11px;font-weight:600;padding:9px 14px;text-align:center;white-space:nowrap';
+  const TD = 'padding:8px 14px;text-align:center;border-top:1px solid var(--border);font-size:13px;';
+
+  let html = `<div style="overflow-x:auto"><table style="border-collapse:collapse;width:100%"><thead><tr>
+    <th style="${TH};text-align:left">Менеджер</th>`;
+  for (const st of stages) html += `<th style="${TH}">${st.label}</th>`;
+  html += '</tr></thead><tbody>';
+
+  for (const row of rows) {
+    html += `<tr><td style="${TD};text-align:left;color:var(--text)">${MANAGERS[row.u]}</td>`;
+    for (const st of stages) {
+      const s = row.stats[st.key];
+      if (s.n === 0) {
+        html += `<td style="${TD};color:#555">—</td>`;
+      } else {
+        const avg = (s.sum / s.n).toFixed(1);
+        html += `<td style="${TD}">${avg} ${st.unit}</td>`;
+      }
+    }
+    html += '</tr>';
+  }
+  html += '</tbody></table></div>';
+  wrap.innerHTML = html;
 }
 
 // ── Overdue tasks ────────────────────────────────────────────────────────────
