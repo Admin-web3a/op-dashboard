@@ -1247,17 +1247,17 @@ function renderSlaChart(leads, fromTs, toTs) {
   const normH     = planData.sla_yellow_hours || 4;
   const redH      = planData.sla_red_hours    || 24;
 
-  // Only leads that were taken in-work during the selected period
+  // Only leads CREATED in the selected period that have been taken in-work
   const stats = {};
   for (const uid of MGR_IDS) stats[uid] = {n: 0, sumH: 0, ok: 0, yellow: 0, red: 0};
 
   for (const l of DATA.leads) {
-    if (!l.d_w || l.d_w < fromTs || l.d_w > toTs) continue;
-    if (!l.c) continue;
+    if (!l.c || l.c < fromTs || l.c > toTs) continue; // created in period
+    if (!l.d_w) continue; // not yet taken in-work
     const s = stats[l.mgr];
     if (!s) continue;
     const h = (l.d_w - l.c) / 3600;
-    if (h < 0) continue; // data anomaly
+    if (h < 0 || h > 720) continue; // skip anomalies (>30 days = data issue)
     s.n++;
     s.sumH += h;
     if (h <= normH)      s.ok++;
@@ -1325,7 +1325,7 @@ function renderVelocityTable(leads, fromTs, toTs) {
     {key: 'qu_of', label: 'Квалиф. → Оффер озвучен',  from: 'd_q', to: 'd_o', unit: 'дн'},
   ];
 
-  // Only leads taken in-work during selected period
+  // Only leads CREATED in selected period
   const mgr_stats = {};
   for (const uid of MGR_IDS) {
     mgr_stats[uid] = {};
@@ -1333,7 +1333,7 @@ function renderVelocityTable(leads, fromTs, toTs) {
   }
 
   for (const l of DATA.leads) {
-    if (!l.d_w || l.d_w < fromTs || l.d_w > toTs) continue;
+    if (!l.c || l.c < fromTs || l.c > toTs) continue; // created in period
     const ms = mgr_stats[l.mgr];
     if (!ms) continue;
     for (const st of stages) {
