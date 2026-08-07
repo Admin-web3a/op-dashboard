@@ -1302,7 +1302,7 @@ function renderSlaChart(leads, fromTs, toTs) {
           formatter: (v, ctx) => {
             const d = used[ctx.dataIndex];
             const pct = Math.round(d.ok / d.n * 100);
-            return v + 'ч (' + pct + '% в норме)';
+            return v + 'ч · ' + d.n + ' лид. (' + pct + '% в норме)';
           }
         }
       },
