@@ -26,7 +26,7 @@
 </head>
 <body>
 <h1>БС Реанимация — Основная воронка ОП</h1>
-<div class="meta">Тег: быстрыйстартреанимация &nbsp;·&nbsp; Обновлено: 08.08.2026 09:34 МСК &nbsp;·&nbsp;
+<div class="meta">Тег: быстрыйстартреанимация &nbsp;·&nbsp; Обновлено: 09.08.2026 07:59 МСК &nbsp;·&nbsp;
   <a href="/op-dashboard/">← op-dashboard</a></div>
 
 <div class="stats">
@@ -84,8 +84,8 @@ const base = {
 new Chart(document.getElementById('dailyChart'), {
   type: 'bar',
   data: {
-    labels: ["4 Aug", "5 Aug", "6 Aug", "7 Aug"],
-    datasets: [{ label: 'Лиды', data: [3, 1, 10, 3],
+    labels: ["4 Aug", "5 Aug", "6 Aug", "8 Aug", "9 Aug"],
+    datasets: [{ label: 'Лиды', data: [3, 1, 6, 6, 1],
       backgroundColor: 'rgba(56,189,248,.7)', borderColor: '#38bdf8',
       borderWidth: 1, borderRadius: 3 }]
   },
@@ -99,7 +99,7 @@ new Chart(document.getElementById('dailyChart'), {
 // 2. Manager stacked chart
 new Chart(document.getElementById('mgrChart'), {
   type: 'bar',
-  data: { labels: ["Никита Саламатин", "Наталья", "Зверева Елена", "Сергей"], datasets: [{"label": "Взято в работу", "data": [4, 0, 0, 1], "backgroundColor": "#00cec9"}, {"label": "Контакт установлен", "data": [0, 0, 0, 1], "backgroundColor": "#ffd32a"}, {"label": "НДЗ", "data": [0, 2, 2, 1], "backgroundColor": "#f5a623"}, {"label": "Отложен", "data": [1, 0, 0, 0], "backgroundColor": "#a29bfe"}, {"label": "Закрыто", "data": [0, 0, 2, 3], "backgroundColor": "#eb4d4b"}] },
+  data: { labels: ["Никита Саламатин", "Наталья", "Зверева Елена", "Сергей"], datasets: [{"label": "Взято в работу", "data": [4, 0, 0, 0], "backgroundColor": "#00cec9"}, {"label": "Контакт установлен", "data": [0, 0, 0, 2], "backgroundColor": "#ffd32a"}, {"label": "НДЗ", "data": [0, 2, 2, 1], "backgroundColor": "#f5a623"}, {"label": "Отложен", "data": [1, 0, 0, 0], "backgroundColor": "#a29bfe"}, {"label": "Закрыто", "data": [0, 0, 2, 3], "backgroundColor": "#eb4d4b"}] },
   options: {...base,
     indexAxis: 'y',
     scales: {
@@ -116,7 +116,7 @@ new Chart(document.getElementById('funnelChart'), {
     labels: ["Взято в работу", "Контакт установлен", "Квалифицирован", "Оффер озвучен", "Продажа"],
     datasets: [{
       label: 'Лидов',
-      data: [12, 2, 1, 1, 0],
+      data: [12, 3, 1, 1, 0],
       backgroundColor: ['#00cec9','#ffd32a','#ff6b81','#7ed6df','#6ab04c'],
       borderRadius: 4,
     }]
