@@ -26,16 +26,16 @@
 </head>
 <body>
 <h1>БС Реанимация — Основная воронка ОП</h1>
-<div class="meta">Тег: быстрыйстартреанимация &nbsp;·&nbsp; Обновлено: 09.08.2026 09:39 МСК &nbsp;·&nbsp;
+<div class="meta">Тег: быстрыйстартреанимация &nbsp;·&nbsp; Обновлено: 10.08.2026 08:19 МСК &nbsp;·&nbsp;
   <a href="/op-dashboard/">← op-dashboard</a></div>
 
 <div class="stats">
   <div class="stat"><div class="stat-val blue">17</div><div class="stat-lbl">Всего лидов</div></div>
   <div class="stat"><div class="stat-val green">0</div><div class="stat-lbl">Продажи</div></div>
-  <div class="stat"><div class="stat-val">12</div><div class="stat-lbl">В работе</div></div>
-  <div class="stat"><div class="stat-val red">5</div><div class="stat-lbl">Закрыто</div></div>
-  <div class="stat"><div class="stat-val yellow">4</div><div class="stat-lbl">Без задачи</div></div>
-  <div class="stat"><div class="stat-val red">5</div><div class="stat-lbl">Просрочено задач</div></div>
+  <div class="stat"><div class="stat-val">10</div><div class="stat-lbl">В работе</div></div>
+  <div class="stat"><div class="stat-val red">7</div><div class="stat-lbl">Закрыто</div></div>
+  <div class="stat"><div class="stat-val yellow">6</div><div class="stat-lbl">Без задачи</div></div>
+  <div class="stat"><div class="stat-val red">0</div><div class="stat-lbl">Просрочено задач</div></div>
 </div>
 
 <h2>Лиды по дням (дата тега)</h2>
@@ -85,7 +85,7 @@ new Chart(document.getElementById('dailyChart'), {
   type: 'bar',
   data: {
     labels: ["4 Aug", "5 Aug", "6 Aug", "8 Aug", "9 Aug"],
-    datasets: [{ label: 'Лиды', data: [3, 1, 6, 6, 1],
+    datasets: [{ label: 'Лиды', data: [3, 1, 2, 4, 7],
       backgroundColor: 'rgba(56,189,248,.7)', borderColor: '#38bdf8',
       borderWidth: 1, borderRadius: 3 }]
   },
@@ -99,7 +99,7 @@ new Chart(document.getElementById('dailyChart'), {
 // 2. Manager stacked chart
 new Chart(document.getElementById('mgrChart'), {
   type: 'bar',
-  data: { labels: ["Никита Саламатин", "Наталья", "Зверева Елена", "Сергей"], datasets: [{"label": "Взято в работу", "data": [4, 0, 0, 0], "backgroundColor": "#00cec9"}, {"label": "Контакт установлен", "data": [0, 0, 0, 2], "backgroundColor": "#ffd32a"}, {"label": "НДЗ", "data": [0, 2, 2, 1], "backgroundColor": "#f5a623"}, {"label": "Отложен", "data": [1, 0, 0, 0], "backgroundColor": "#a29bfe"}, {"label": "Закрыто", "data": [0, 0, 2, 3], "backgroundColor": "#eb4d4b"}] },
+  data: { labels: ["Никита Саламатин", "Наталья", "Зверева Елена", "Сергей"], datasets: [{"label": "Взято в работу", "data": [3, 0, 0, 0], "backgroundColor": "#00cec9"}, {"label": "Контакт установлен", "data": [0, 0, 0, 2], "backgroundColor": "#ffd32a"}, {"label": "НДЗ", "data": [0, 2, 0, 1], "backgroundColor": "#f5a623"}, {"label": "Отложен", "data": [1, 0, 1, 0], "backgroundColor": "#a29bfe"}, {"label": "Закрыто", "data": [1, 0, 3, 3], "backgroundColor": "#eb4d4b"}] },
   options: {...base,
     indexAxis: 'y',
     scales: {
@@ -116,7 +116,7 @@ new Chart(document.getElementById('funnelChart'), {
     labels: ["Взято в работу", "Контакт установлен", "Квалифицирован", "Оффер озвучен", "Продажа"],
     datasets: [{
       label: 'Лидов',
-      data: [12, 3, 1, 1, 0],
+      data: [10, 4, 2, 2, 0],
       backgroundColor: ['#00cec9','#ffd32a','#ff6b81','#7ed6df','#6ab04c'],
       borderRadius: 4,
     }]
@@ -137,8 +137,8 @@ new Chart(document.getElementById('funnelChart'), {
 new Chart(document.getElementById('noTaskChart'), {
   type: 'bar',
   data: {
-    labels: ["Зверева Елена", "Сергей"],
-    datasets: [{ label: 'Без задачи', data: [2, 2],
+    labels: ["Зверева Елена", "Сергей", "Никита Саламатин"],
+    datasets: [{ label: 'Без задачи', data: [3, 2, 1],
       backgroundColor: 'rgba(245,166,35,.8)', borderRadius: 3 }]
   },
   options: {...base,
@@ -152,8 +152,8 @@ new Chart(document.getElementById('noTaskChart'), {
 new Chart(document.getElementById('overdueChart'), {
   type: 'bar',
   data: {
-    labels: ["Никита Саламатин"],
-    datasets: [{ label: 'Просрочено', data: [5],
+    labels: [],
+    datasets: [{ label: 'Просрочено', data: [],
       backgroundColor: 'rgba(235,77,75,.8)', borderRadius: 3 }]
   },
   options: {...base,
