@@ -698,6 +698,13 @@ function triggerRefresh() {
   <div class="chart-wrap"><canvas id="slaChart" height="90"></canvas></div>
 </div>
 
+<!-- ── SLA working hours ── -->
+<div class="section">
+  <h2>SLA: взятие в работу в рабочее время (часы)</h2>
+  <p style="color:var(--muted);font-size:12px;margin:-10px 0 14px">Рабочий SLA: время от начала рабочего дня менеджера (или от создания лида, если он пришёл в рабочее время) до взятия в работу. Ночные и нерабочие часы не считаются. 🟢 ≤ 1 ч · 🟡 ≤ 4 ч · 🔴 &gt; 4 ч.</p>
+  <div class="chart-wrap"><canvas id="slaWorkChart" height="90"></canvas></div>
+</div>
+
 <!-- ── Velocity table ── -->
 <div class="section">
   <h2>Скорость воронки по менеджерам (дней между этапами)</h2>
@@ -952,6 +959,7 @@ function renderAll(leads, mode, fromStr, toStr, fromTs, toTs) {
   updateGroupBCards(fromTs, toTs, fromStr, toStr);
   renderDailyChart(leads, mode, fromStr, toStr);
   renderSlaChart(leads, fromTs, toTs);
+  renderSlaWorkChart(leads, fromTs, toTs);
   renderVelocityTable(leads, fromTs, toTs);
   renderOverdueChart(leads);
   renderFunnelChart(leads);
@@ -1309,6 +1317,116 @@ function renderSlaChart(leads, fromTs, toTs) {
       scales: {
         x: {ticks: {color: '#aaa', maxRotation: 35, font: {size: 10}}, grid: {display: false}},
         y: {ticks: {color: '#777', callback: v => v + 'ч'}, grid: {color: '#1f2235'}, beginAtZero: true}
+      }
+    }
+  });
+}
+
+// ── SLA working hours chart ──────────────────────────────────────────────────
+
+// Manager work schedules, Moscow time (UTC+4). start/end in hours.
+const MGR_SCHEDULE = {
+  "12377210": {start:  9, end: 18},  // Никита Саламатин
+  "11181290": {start: 10, end: 19},  // Сергей
+  "11176694": {start: 10, end: 19},  // Наталья
+  "6461602":  {start: 14, end: 22},  // Зверева Елена
+};
+const MSK_OFFSET_SEC = 4 * 3600; // UTC+4
+
+// Count working hours between two Unix timestamps for a given daily schedule.
+// Weekend days are NOT excluded (managers work on a rolling duty basis).
+function workHoursBetween(t1, t2, startH, endH) {
+  if (!t1 || !t2 || t2 <= t1) return 0;
+  const wsec = startH * 3600, esec = endH * 3600;
+
+  // Find effective start: if t1 is before today's window → shift to window open;
+  // if t1 is after today's window → shift to next day's window open.
+  const msk1   = t1 + MSK_OFFSET_SEC;
+  const base1  = Math.floor(msk1 / 86400) * 86400 - MSK_OFFSET_SEC;
+  let cursor;
+  if      (t1 < base1 + wsec) cursor = base1 + wsec;            // before window
+  else if (t1 >= base1 + esec) cursor = base1 + 86400 + wsec;   // after window
+  else                          cursor = t1;                      // inside window
+
+  let hours = 0;
+  let guard = 0;
+  while (cursor < t2 && guard++ < 400) {
+    const mskC  = cursor + MSK_OFFSET_SEC;
+    const baseC = Math.floor(mskC / 86400) * 86400 - MSK_OFFSET_SEC;
+    const winE  = baseC + esec;
+    if (cursor >= winE) { cursor = baseC + 86400 + wsec; continue; }
+    const from = cursor;
+    const to   = Math.min(t2, winE);
+    if (to > from) hours += (to - from) / 3600;
+    cursor = baseC + 86400 + wsec;
+  }
+  return hours;
+}
+
+function renderSlaWorkChart(leads, fromTs, toTs) {
+  const GREEN_H = 1, RED_H = 4;
+  const stats = {};
+  for (const uid of MGR_IDS) {
+    if (MGR_SCHEDULE[String(uid)]) stats[uid] = {n:0, sumH:0, ok:0};
+  }
+
+  for (const l of leads) {
+    if (!l.c || !l.d_w) continue;
+    const sched = MGR_SCHEDULE[String(l.mgr)];
+    if (!sched) continue;
+    const s = stats[l.mgr];
+    if (!s) continue;
+    // Only count leads created in selected period
+    if (l.c < fromTs || l.c > toTs) continue;
+    const h = workHoursBetween(l.c, l.d_w, sched.start, sched.end);
+    if (h < 0 || h > 200) continue;
+    s.n++;
+    s.sumH += h;
+    if (h <= GREEN_H) s.ok++;
+  }
+
+  const used = Object.keys(stats)
+    .map(Number)
+    .filter(u => stats[u].n > 0)
+    .map(u => ({u, avg: stats[u].sumH / stats[u].n, n: stats[u].n, ok: stats[u].ok}))
+    .sort((a, b) => a.avg - b.avg);
+
+  if (!used.length) {
+    upsertChart('slaWorkChart', {type:'bar',
+      data:{labels:['Нет данных'], datasets:[{data:[0]}]},
+      options:{plugins:{datalabels:{display:false}},
+               scales:{x:{ticks:{color:'#777'}}, y:{ticks:{color:'#777'}}}}});
+    return;
+  }
+
+  upsertChart('slaWorkChart', {
+    type: 'bar',
+    data: {
+      labels: used.map(x => MANAGERS[x.u]),
+      datasets: [{
+        label: 'Рабочий SLA, ч',
+        data:  used.map(x => +x.avg.toFixed(2)),
+        backgroundColor: used.map(x =>
+          x.avg <= GREEN_H ? '#6ab04c' : x.avg <= RED_H ? '#f5a623' : '#eb4d4b'),
+        borderRadius: 4,
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: {display: false},
+        datalabels: {
+          color: '#ccc', font: {size: 10}, anchor: 'end', align: 'top',
+          formatter: (v, ctx) => {
+            const d = used[ctx.dataIndex];
+            const pct = Math.round(d.ok / d.n * 100);
+            return v + 'ч · ' + d.n + ' лид. (' + pct + '% ≤1ч)';
+          }
+        }
+      },
+      scales: {
+        x: {ticks:{color:'#aaa', maxRotation:35, font:{size:10}}, grid:{display:false}},
+        y: {ticks:{color:'#777', callback: v => v + 'ч'}, grid:{color:'#1f2235'}, beginAtZero:true}
       }
     }
   });
