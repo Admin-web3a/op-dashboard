@@ -487,12 +487,16 @@ def build_report():
     print("Fetching future tasks for active leads…")
     leads_with_future_task = fetch_future_tasks_for_active(active_lead_ids)
 
+    print("Fetching overdue tasks for active leads…")
+    active_tasks_od = fetch_overdue_tasks_per_lead(active_lead_ids)
+
     active_leads_data = [
         {
             "mgr": l["mgr"],
             "sid": l["sid"],
             "upd": l.get("upd"),
             "ht":  (l["id"] in leads_with_future_task) if l.get("id") else False,
+            "tod": active_tasks_od.get(l["id"], 0),
         }
         for l in active_leads_raw
         if l.get("mgr") in MANAGERS
@@ -961,7 +965,7 @@ function renderAll(leads, mode, fromStr, toStr, fromTs, toTs) {
   renderSlaChart(leads, fromTs, toTs);
   renderSlaWorkChart(leads, fromTs, toTs);
   renderVelocityTable(leads, fromTs, toTs);
-  renderOverdueChart(leads);
+  renderOverdueChart();
   renderFunnelChart(leads);
   renderCohortTable(leads);
   renderWeeklyDynamicsChart(leads);
@@ -1497,10 +1501,11 @@ function renderVelocityTable(leads, fromTs, toTs) {
 
 // ── Overdue tasks ────────────────────────────────────────────────────────────
 
-function renderOverdueChart(leads) {
+function renderOverdueChart() {
+  // Use active_leads snapshot (not period-filtered) so overdue count matches CRM
   const counts = {};
   for (const uid of MGR_IDS) counts[uid] = 0;
-  for (const l of leads) {
+  for (const l of DATA.active_leads) {
     if (l.tod && counts[l.mgr] !== undefined) counts[l.mgr] += l.tod;
   }
   const usedIds = MGR_IDS.filter(uid => counts[uid]>0);
