@@ -691,7 +691,7 @@ function triggerRefresh() {
 <!-- ── No active task ── -->
 <div class="section">
   <h2>Лиды без активной задачи, %</h2>
-  <p style="color:var(--muted);font-size:12px;margin:-10px 0 14px">Доля открытых сделок без запланированной задачи (complete_till &gt; сейчас) по каждому менеджеру.</p>
+  <p style="color:var(--muted);font-size:12px;margin:-10px 0 14px">Доля открытых сделок без каких-либо незавершённых задач (ни будущих, ни просроченных) по каждому менеджеру.</p>
   <div class="chart-wrap"><canvas id="noTaskChart" height="90"></canvas></div>
 </div>
 
@@ -1215,7 +1215,7 @@ function renderNoTaskChart() {
   for (const l of DATA.active_leads) {
     if (total[l.mgr] === undefined) continue;
     total[l.mgr]++;
-    if (!l.ht) noTask[l.mgr]++;
+    if (!l.ht && !l.tod) noTask[l.mgr]++;
   }
   const usedIds = MGR_IDS.filter(u => total[u] > 0);
   if (!usedIds.length) {
