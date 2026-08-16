@@ -662,7 +662,7 @@ function triggerRefresh() {
   <div class="stat"><div class="stat-value" id="sv_new">—</div><div class="stat-label">Новых лидов</div></div>
   <div class="stat green"><div class="stat-value" id="sv_sales">—</div><div class="stat-label">Продажи</div></div>
   <div class="stat"><div class="stat-value" id="sv_conv">—</div><div class="stat-label">Конверсия в продажу</div></div>
-  <div class="stat green" style="min-width:160px"><div class="stat-value" id="sv_revenue" style="font-size:20px">—</div><div class="stat-label">Выручка, ₽</div></div>
+  <div class="stat green" style="min-width:160px"><div class="stat-value" id="sv_revenue" style="font-size:20px">—</div><div class="stat-label">Выручка, ₽</div><div id="sv_revenue_adj" style="display:none;font-size:10px;color:var(--muted);margin-top:4px;line-height:1.3"></div></div>
   <div class="stat" style="min-width:160px"><div class="stat-value" id="sv_avg" style="font-size:20px">—</div><div class="stat-label">Средний чек, ₽</div></div>
   <div class="stat stat-plan-hidden" id="sv_plan_card"><div class="stat-value" id="sv_plan">—</div><div class="stat-label">% плана</div></div>
   <div class="stat stat-plan-hidden" id="sv_forecast_card"><div class="stat-value" id="sv_forecast" style="font-size:20px">—</div><div class="stat-label">Прогноз выручки, ₽</div></div>
@@ -1021,10 +1021,16 @@ function updateGroupBCards(fromTs, toTs, fromStr, toStr) {
   for (const l of leadsClosed) {
     if (grpOf(l)==='sale') { sales++; revenue += l.price||0; }
   }
+  // Manual revenue adjustment from plans.json
+  const periodKey0 = fromStr ? fromStr.slice(0,7) : null;
+  const planAdj = DATA.plans && periodKey0 ? (DATA.plans[periodKey0] || {}) : {};
+  const adjustment = planAdj.revenue_adjustment || 0;
+  const totalRevenue = revenue + adjustment;
+
   // Conversion: sales (closing attribution) / взято-в-работу (creation attribution)
   const inWorkCnt = leadsCreated.filter(l => (FUNNEL_POS[grpOf(l)]||0) >= 2).length;
   const conv = inWorkCnt > 0 ? (sales/inWorkCnt*100).toFixed(1)+'%' : '—';
-  const avg  = sales > 0 ? Math.round(revenue/sales) : 0;
+  const avg  = sales > 0 ? Math.round(totalRevenue/sales) : 0;
 
   // Period label
   const mNames = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
@@ -1041,8 +1047,19 @@ function updateGroupBCards(fromTs, toTs, fromStr, toStr) {
   document.getElementById('sv_new').textContent     = numFmt(newLeads);
   document.getElementById('sv_sales').textContent   = numFmt(sales);
   document.getElementById('sv_conv').textContent    = conv;
-  document.getElementById('sv_revenue').textContent = numFmt(revenue);
+  document.getElementById('sv_revenue').textContent = numFmt(totalRevenue);
   document.getElementById('sv_avg').textContent     = avg > 0 ? numFmt(avg) : '—';
+
+  // Show/hide adjustment note under revenue card
+  const adjNote = document.getElementById('sv_revenue_adj');
+  if (adjNote) {
+    if (adjustment > 0) {
+      adjNote.textContent = 'из них ' + numFmt(revenue) + ' по сделкам + ' + numFmt(adjustment) + ' корректировка';
+      adjNote.style.display = '';
+    } else {
+      adjNote.style.display = 'none';
+    }
+  }
 
   // Plan-based cards
   const plan = DATA.plans && periodKey ? DATA.plans[periodKey] : null;
@@ -1052,7 +1069,7 @@ function updateGroupBCards(fromTs, toTs, fromStr, toStr) {
   const fcastCard = document.getElementById('sv_forecast_card');
 
   if (plan && planRevTotal > 0) {
-    const pct   = Math.round(revenue / planRevTotal * 100);
+    const pct   = Math.round(totalRevenue / planRevTotal * 100);
     const pctEl = document.getElementById('sv_plan');
     pctEl.textContent = pct + '%';
     pctEl.style.color = pct >= 100 ? 'var(--green)' : pct >= 70 ? 'var(--orange)' : 'var(--red)';
@@ -1066,7 +1083,7 @@ function updateGroupBCards(fromTs, toTs, fromStr, toStr) {
       const endMs     = new Date(toStr  +'T23:59:59').getTime();
       const totalDays   = Math.round((endMs - startMs) / 86400000);
       const elapsedDays = Math.max(1, Math.min(totalDays, Math.round((now.getTime() - startMs) / 86400000)));
-      const forecast = Math.round(revenue * totalDays / elapsedDays);
+      const forecast = Math.round(totalRevenue * totalDays / elapsedDays);
       document.getElementById('sv_forecast').textContent = numFmt(forecast);
       if (fcastCard) fcastCard.classList.remove('stat-plan-hidden');
     } else {

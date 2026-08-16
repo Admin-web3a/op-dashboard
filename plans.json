@@ -1,5 +1,5 @@
 {
-  "_comment": "Плановые показатели по месяцам. Ключ — YYYY-MM. Заполните revenue (₽) для каждого менеджера.",
+  "_comment": "Плановые показатели по месяцам. Ключ — YYYY-MM. Заполните revenue (₽) для каждого менеджера. revenue_adjustment — ручная корректировка выручки (₽), добавляется к итогу без атрибуции по сделкам.",
   "2026-07": {
     "managers": {
       "12377210": { "revenue": 1000000 },
@@ -34,6 +34,7 @@
     "aging_yellow_days": 7,
     "aging_red_days": 14,
     "sla_yellow_hours": 4,
-    "sla_red_hours": 24
+    "sla_red_hours": 24,
+    "revenue_adjustment": 0
   }
 }
