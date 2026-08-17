@@ -26,7 +26,7 @@
 </head>
 <body>
 <h1>БС Реанимация — Основная воронка ОП</h1>
-<div class="meta">Тег: быстрыйстартреанимация &nbsp;·&nbsp; Обновлено: 17.08.2026 09:49 МСК &nbsp;·&nbsp;
+<div class="meta">Тег: быстрыйстартреанимация &nbsp;·&nbsp; Обновлено: 17.08.2026 13:56 МСК &nbsp;·&nbsp;
   <a href="/op-dashboard/">← op-dashboard</a></div>
 
 <div class="stats">
@@ -35,7 +35,7 @@
   <div class="stat"><div class="stat-val">8</div><div class="stat-lbl">В работе</div></div>
   <div class="stat"><div class="stat-val red">9</div><div class="stat-lbl">Закрыто</div></div>
   <div class="stat"><div class="stat-val yellow">7</div><div class="stat-lbl">Без задачи</div></div>
-  <div class="stat"><div class="stat-val red">5</div><div class="stat-lbl">Просрочено задач</div></div>
+  <div class="stat"><div class="stat-val red">3</div><div class="stat-lbl">Просрочено задач</div></div>
 </div>
 
 <h2>Лиды по дням (дата тега)</h2>
@@ -84,8 +84,8 @@ const base = {
 new Chart(document.getElementById('dailyChart'), {
   type: 'bar',
   data: {
-    labels: ["4 Aug", "5 Aug", "6 Aug", "8 Aug", "9 Aug", "10 Aug", "11 Aug", "15 Aug"],
-    datasets: [{ label: 'Лиды', data: [2, 1, 2, 1, 6, 2, 1, 2],
+    labels: ["4 Aug", "5 Aug", "6 Aug", "8 Aug", "9 Aug", "10 Aug", "11 Aug", "15 Aug", "17 Aug"],
+    datasets: [{ label: 'Лиды', data: [1, 1, 2, 1, 5, 2, 1, 2, 2],
       backgroundColor: 'rgba(56,189,248,.7)', borderColor: '#38bdf8',
       borderWidth: 1, borderRadius: 3 }]
   },
@@ -152,8 +152,8 @@ new Chart(document.getElementById('noTaskChart'), {
 new Chart(document.getElementById('overdueChart'), {
   type: 'bar',
   data: {
-    labels: ["Никита Саламатин", "Наталья"],
-    datasets: [{ label: 'Просрочено', data: [4, 1],
+    labels: ["Никита Саламатин"],
+    datasets: [{ label: 'Просрочено', data: [3],
       backgroundColor: 'rgba(235,77,75,.8)', borderRadius: 3 }]
   },
   options: {...base,
