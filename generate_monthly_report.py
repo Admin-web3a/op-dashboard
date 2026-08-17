@@ -674,6 +674,18 @@ function triggerRefresh() {
   <div class="chart-wrap"><canvas id="dailyChart" height="90"></canvas></div>
 </div>
 
+<!-- ── Tariff & Close reasons ── -->
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start">
+  <div class="section">
+    <h2>Продажи по тарифам</h2>
+    <div class="chart-wrap" style="height:320px"><canvas id="tariffChart"></canvas></div>
+  </div>
+  <div class="section">
+    <h2>Причины закрытия сделок</h2>
+    <div class="chart-wrap" style="height:320px"><canvas id="reasonChart"></canvas></div>
+  </div>
+</div>
+
 <!-- ── Manager ── -->
 <div class="section">
   <h2>Лиды по менеджерам</h2>
@@ -785,18 +797,6 @@ function triggerRefresh() {
   <h2>Статусы по странам (топ-10)</h2>
   <div class="chart-wrap"><canvas id="countryStatusChart" height="120"></canvas></div>
 </div>
-<!-- ── Tariff & Close reasons ── -->
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start">
-  <div class="section">
-    <h2>Продажи по тарифам</h2>
-    <div class="chart-wrap" style="height:320px"><canvas id="tariffChart"></canvas></div>
-  </div>
-  <div class="section">
-    <h2>Причины закрытия сделок</h2>
-    <div class="chart-wrap" style="height:320px"><canvas id="reasonChart"></canvas></div>
-  </div>
-</div>
-
 <!-- ── Manager detail table ── -->
 <div class="section">
   <h2>Детализация по менеджерам</h2>
