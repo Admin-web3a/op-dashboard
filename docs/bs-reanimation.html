@@ -26,7 +26,7 @@
 </head>
 <body>
 <h1>БС Реанимация — Основная воронка ОП</h1>
-<div class="meta">Тег: быстрыйстартреанимация &nbsp;·&nbsp; Обновлено: 22.08.2026 09:22 МСК &nbsp;·&nbsp;
+<div class="meta">Тег: быстрыйстартреанимация &nbsp;·&nbsp; Обновлено: 23.08.2026 07:31 МСК &nbsp;·&nbsp;
   <a href="/op-dashboard/">← op-dashboard</a></div>
 
 <div class="stats">
@@ -35,7 +35,7 @@
   <div class="stat"><div class="stat-val">8</div><div class="stat-lbl">В работе</div></div>
   <div class="stat"><div class="stat-val red">9</div><div class="stat-lbl">Закрыто</div></div>
   <div class="stat"><div class="stat-val yellow">7</div><div class="stat-lbl">Без задачи</div></div>
-  <div class="stat"><div class="stat-val red">0</div><div class="stat-lbl">Просрочено задач</div></div>
+  <div class="stat"><div class="stat-val red">1</div><div class="stat-lbl">Просрочено задач</div></div>
 </div>
 
 <h2>Лиды по дням (дата тега)</h2>
@@ -152,8 +152,8 @@ new Chart(document.getElementById('noTaskChart'), {
 new Chart(document.getElementById('overdueChart'), {
   type: 'bar',
   data: {
-    labels: [],
-    datasets: [{ label: 'Просрочено', data: [],
+    labels: ["Сергей"],
+    datasets: [{ label: 'Просрочено', data: [1],
       backgroundColor: 'rgba(235,77,75,.8)', borderRadius: 3 }]
   },
   options: {...base,
