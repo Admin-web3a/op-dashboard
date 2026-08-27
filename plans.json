@@ -35,6 +35,6 @@
     "aging_red_days": 14,
     "sla_yellow_hours": 4,
     "sla_red_hours": 24,
-    "revenue_adjustment": 11715
+    "revenue_adjustment": -678285
   }
 }
