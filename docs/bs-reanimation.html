@@ -26,15 +26,15 @@
 </head>
 <body>
 <h1>БС Реанимация — Основная воронка ОП</h1>
-<div class="meta">Тег: быстрыйстартреанимация &nbsp;·&nbsp; Обновлено: 27.08.2026 11:10 МСК &nbsp;·&nbsp;
+<div class="meta">Тег: быстрыйстартреанимация &nbsp;·&nbsp; Обновлено: 27.08.2026 17:55 МСК &nbsp;·&nbsp;
   <a href="/op-dashboard/">← op-dashboard</a></div>
 
 <div class="stats">
   <div class="stat"><div class="stat-val blue">17</div><div class="stat-lbl">Всего лидов</div></div>
   <div class="stat"><div class="stat-val green">0</div><div class="stat-lbl">Продажи</div></div>
-  <div class="stat"><div class="stat-val">7</div><div class="stat-lbl">В работе</div></div>
-  <div class="stat"><div class="stat-val red">10</div><div class="stat-lbl">Закрыто</div></div>
-  <div class="stat"><div class="stat-val yellow">8</div><div class="stat-lbl">Без задачи</div></div>
+  <div class="stat"><div class="stat-val">5</div><div class="stat-lbl">В работе</div></div>
+  <div class="stat"><div class="stat-val red">12</div><div class="stat-lbl">Закрыто</div></div>
+  <div class="stat"><div class="stat-val yellow">10</div><div class="stat-lbl">Без задачи</div></div>
   <div class="stat"><div class="stat-val red">0</div><div class="stat-lbl">Просрочено задач</div></div>
 </div>
 
@@ -84,7 +84,7 @@ const base = {
 new Chart(document.getElementById('dailyChart'), {
   type: 'bar',
   data: {
-    labels: ["4 Aug", "5 Aug", "6 Aug", "8 Aug", "9 Aug", "10 Aug", "11 Aug", "15 Aug", "18 Aug", "19 Aug", "24 Aug", "25 Aug", "26 Aug"],
+    labels: ["4 Aug", "5 Aug", "6 Aug", "8 Aug", "9 Aug", "10 Aug", "11 Aug", "15 Aug", "18 Aug", "19 Aug", "24 Aug", "25 Aug", "27 Aug"],
     datasets: [{ label: 'Лиды', data: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 4],
       backgroundColor: 'rgba(56,189,248,.7)', borderColor: '#38bdf8',
       borderWidth: 1, borderRadius: 3 }]
@@ -99,7 +99,7 @@ new Chart(document.getElementById('dailyChart'), {
 // 2. Manager stacked chart
 new Chart(document.getElementById('mgrChart'), {
   type: 'bar',
-  data: { labels: ["Никита Саламатин", "Наталья", "Зверева Елена", "Сергей"], datasets: [{"label": "Взято в работу", "data": [3, 0, 0, 0], "backgroundColor": "#00cec9"}, {"label": "Контакт установлен", "data": [0, 0, 0, 1], "backgroundColor": "#ffd32a"}, {"label": "НДЗ", "data": [0, 1, 0, 0], "backgroundColor": "#f5a623"}, {"label": "Отложен", "data": [1, 1, 0, 0], "backgroundColor": "#a29bfe"}, {"label": "Закрыто", "data": [1, 0, 4, 5], "backgroundColor": "#eb4d4b"}] },
+  data: { labels: ["Никита Саламатин", "Наталья", "Зверева Елена", "Сергей"], datasets: [{"label": "Контакт установлен", "data": [0, 0, 0, 1], "backgroundColor": "#ffd32a"}, {"label": "НДЗ", "data": [0, 1, 0, 0], "backgroundColor": "#f5a623"}, {"label": "Отложен", "data": [2, 1, 0, 0], "backgroundColor": "#a29bfe"}, {"label": "Закрыто", "data": [3, 0, 4, 5], "backgroundColor": "#eb4d4b"}] },
   options: {...base,
     indexAxis: 'y',
     scales: {
@@ -116,7 +116,7 @@ new Chart(document.getElementById('funnelChart'), {
     labels: ["Взято в работу", "Контакт установлен", "Квалифицирован", "Оффер озвучен", "Продажа"],
     datasets: [{
       label: 'Лидов',
-      data: [7, 3, 2, 2, 0],
+      data: [5, 4, 3, 3, 0],
       backgroundColor: ['#00cec9','#ffd32a','#ff6b81','#7ed6df','#6ab04c'],
       borderRadius: 4,
     }]
@@ -138,7 +138,7 @@ new Chart(document.getElementById('noTaskChart'), {
   type: 'bar',
   data: {
     labels: ["Зверева Елена", "Сергей", "Никита Саламатин"],
-    datasets: [{ label: 'Без задачи', data: [4, 3, 1],
+    datasets: [{ label: 'Без задачи', data: [4, 3, 3],
       backgroundColor: 'rgba(245,166,35,.8)', borderRadius: 3 }]
   },
   options: {...base,
