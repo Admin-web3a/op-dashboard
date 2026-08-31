@@ -23,6 +23,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Generate launch dashboard (zapusk062026)
+        continue-on-error: true
         env:
           AMO_TOKEN: ${{ secrets.AMO_TOKEN }}
         run: python generate_amo_report.py
