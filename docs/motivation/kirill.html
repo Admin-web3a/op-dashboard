@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Мотивация — Кирилл Осипов — Сентябрь 2026</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --card: #1a1d27;
+    --border: #2d3045;
+    --text: #e8eaf6;
+    --muted: #8892b0;
+    --green: #00b894;
+    --yellow: #fdcb6e;
+    --red: #e17055;
+    --accent: #6c63ff;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, 'Segoe UI', sans-serif; padding: 32px 24px; max-width: 960px; margin: 0 auto; }
+  h1 { font-size: 26px; font-weight: 700; margin-bottom: 6px; }
+  .subtitle { color: var(--muted); font-size: 13px; margin-bottom: 36px; }
+  .hero { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 28px 32px; margin-bottom: 28px; display: flex; justify-content: space-between; align-items: center; }
+  .hero-name { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 8px; }
+  .hero-total { font-size: 42px; font-weight: 800; color: var(--green); }
+  .hero-breakdown { font-size: 13px; color: var(--muted); line-height: 2; margin-top: 10px; }
+  .section { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 28px; margin-bottom: 24px; }
+  .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 22px; }
+  .section-title { font-size: 16px; font-weight: 700; }
+  .payout-chip { background: var(--accent); color: #fff; padding: 5px 14px; border-radius: 20px; font-size: 13px; font-weight: 600; }
+  .metric-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 20px; }
+  .metric { background: #12141e; border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+  .metric-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 8px; }
+  .metric-value { font-size: 22px; font-weight: 700; }
+  .result-block { border: 2px solid var(--green); border-radius: 10px; padding: 18px 22px; margin: 20px 0; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
+  .bonus-row { font-size: 14px; color: var(--muted); }
+  .bonus-amount { font-size: 20px; font-weight: 700; color: var(--text); margin-left: 8px; }
+  .tiers-table { margin-top: 16px; }
+  .tiers-table table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .tiers-table th { background: #12141e; color: var(--muted); text-align: left; padding: 8px 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; font-size: 11px; }
+  .tiers-table td { padding: 8px 12px; border-top: 1px solid var(--border); }
+  .active-tier td { background: #1e2235; color: var(--green); font-weight: 700; }
+  .deals-toggle { color: var(--accent); cursor: pointer; font-size: 13px; border: none; background: none; margin-top: 20px; padding: 0; }
+  #deals-table { display: none; margin-top: 16px; overflow-x: auto; }
+  #deals-table table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  #deals-table th { background: #12141e; color: var(--muted); text-align: left; padding: 8px 10px; font-size: 11px; text-transform: uppercase; }
+  #deals-table td { padding: 7px 10px; border-top: 1px solid var(--border); }
+  .alert { background: #2d1b1b; border: 1px solid #d63031; border-radius: 8px; padding: 16px; color: #ff7675; font-size: 13px; }
+  footer { text-align: center; color: var(--muted); font-size: 12px; margin-top: 40px; }
+</style>
+</head>
+<body>
+<h1>Мотивация — Кирилл Осипов</h1>
+<div class="subtitle">Период: Сентябрь 2026 &nbsp;·&nbsp; Обновлено: 02.09.2026 10:28</div>
+
+<div class="hero">
+  <div>
+    <div class="hero-name">Кирилл Осипов &nbsp;·&nbsp; Трафик</div>
+    <div class="hero-total" style="color:var(--muted)">—</div>
+  </div>
+</div>
+<div class="section"><div class="alert">Нет данных для Кирилла. Заполни E8:E9 в медиаплане или передай --kirill-* аргументы.</div></div>
+
+<footer>W3A Motivation Calculator · simmihur.amocrm.ru</footer>
+</body>
+</html>

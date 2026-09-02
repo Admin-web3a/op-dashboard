@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>W3A Motivation</title>
+<style>
+  :root { --bg:#0f1117; --card:#1a1d27; --border:#2d3045; --text:#e8eaf6; --muted:#8892b0; --accent:#6c63ff; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--text); font-family:-apple-system,'Segoe UI',sans-serif;
+         display:flex; flex-direction:column; align-items:center; justify-content:center;
+         min-height:100vh; padding:24px; }
+  h1 { font-size:22px; font-weight:700; margin-bottom:8px; }
+  .sub { color:var(--muted); font-size:13px; margin-bottom:40px; }
+  .cards { display:grid; grid-template-columns:1fr 1fr; gap:20px; width:100%; max-width:560px; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:14px;
+          padding:28px 24px; text-decoration:none; color:var(--text); transition:border-color .2s; }
+  .card:hover { border-color:var(--accent); }
+  .card-label { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; margin-bottom:10px; }
+  .card-name { font-size:20px; font-weight:700; margin-bottom:6px; }
+  .card-role { font-size:13px; color:var(--muted); }
+  .arrow { float:right; font-size:20px; color:var(--accent); }
+  footer { color:var(--muted); font-size:12px; margin-top:48px; }
+</style>
+</head>
+<body>
+<h1>Мотивация W3A</h1>
+<p class="sub">Выбери сотрудника</p>
+<div class="cards">
+  <a class="card" href="phil.html">
+    <span class="arrow">→</span>
+    <div class="card-label">Контент-маркетолог</div>
+    <div class="card-name">Филипп Тимуш</div>
+    <div class="card-role">Entry Offer · Non-paid base</div>
+  </a>
+  <a class="card" href="kirill.html">
+    <span class="arrow">→</span>
+    <div class="card-label">Платный трафик</div>
+    <div class="card-name">Кирилл Осипов</div>
+    <div class="card-role">CPL · Регистрации</div>
+  </a>
+</div>
+<footer>Данные обновляются 1-го числа каждого месяца</footer>
+</body>
+</html>

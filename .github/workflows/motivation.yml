@@ -1,0 +1,70 @@
+name: Motivation Pages
+
+on:
+  # Ручной запуск с параметрами
+  workflow_dispatch:
+    inputs:
+      month:
+        description: "Месяц (YYYY-MM), пусто = текущий"
+        required: false
+        default: ""
+      kirill_plan_cpl:
+        description: "Кирилл: план CPL (руб.)"
+        required: false
+        default: ""
+      kirill_actual_cpl:
+        description: "Кирилл: факт CPL (руб.)"
+        required: false
+        default: ""
+      kirill_plan_regs:
+        description: "Кирилл: план регистраций"
+        required: false
+        default: ""
+      kirill_actual_regs:
+        description: "Кирилл: факт регистраций"
+        required: false
+        default: ""
+
+  # Автозапуск 1-го числа каждого месяца в 07:00 UTC (10:00 МСК)
+  schedule:
+    - cron: "0 7 1 * *"
+
+concurrency:
+  group: motivation-update
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Generate motivation pages
+        env:
+          AMO_TOKEN: ${{ secrets.AMO_TOKEN }}
+          AMO_DOMAIN: simmihur.amocrm.ru
+          NON_PAID_SOURCES: ${{ secrets.NON_PAID_SOURCES }}
+          NON_PAID_MEDIUMS: ${{ secrets.NON_PAID_MEDIUMS }}
+        run: |
+          ARGS=""
+          [ -n "${{ github.event.inputs.month }}"             ] && ARGS="$ARGS --month ${{ github.event.inputs.month }}"
+          [ -n "${{ github.event.inputs.kirill_plan_cpl }}"   ] && ARGS="$ARGS --kirill-plan-cpl ${{ github.event.inputs.kirill_plan_cpl }}"
+          [ -n "${{ github.event.inputs.kirill_actual_cpl }}" ] && ARGS="$ARGS --kirill-actual-cpl ${{ github.event.inputs.kirill_actual_cpl }}"
+          [ -n "${{ github.event.inputs.kirill_plan_regs }}"  ] && ARGS="$ARGS --kirill-plan-regs ${{ github.event.inputs.kirill_plan_regs }}"
+          [ -n "${{ github.event.inputs.kirill_actual_regs }}" ] && ARGS="$ARGS --kirill-actual-regs ${{ github.event.inputs.kirill_actual_regs }}"
+          python calc_motivation.py $ARGS --out-dir docs/motivation
+
+      - name: Commit & push
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/motivation/
+          git diff --cached --quiet || git commit -m "chore: update motivation pages [skip ci]"
+          git push
