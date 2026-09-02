@@ -74,6 +74,12 @@ SHEETS_GID = 0   # лист «Медиаплан»
 PHIL_SALARY   = 160_000
 KIRILL_SALARY = 150_000
 
+MONTHS_RU = {
+    1: "Январь", 2: "Февраль", 3: "Март", 4: "Апрель",
+    5: "Май", 6: "Июнь", 7: "Июль", 8: "Август",
+    9: "Сентябрь", 10: "Октябрь", 11: "Ноябрь", 12: "Декабрь",
+}
+
 # ── Тиры бонусов ──────────────────────────────────────────────────────────────
 
 # Entry Offer: порог месячной выручки → % со всей выручки
@@ -386,26 +392,74 @@ BASE_CSS = """
   footer { text-align: center; color: var(--muted); font-size: 12px; margin-top: 40px; }
 """
 
-def _html_shell(title: str, month_label: str, body: str) -> str:
+def _adjacent_month(month_str: str, delta: int) -> tuple[str, str]:
+    """Return (YYYY-MM, label) for month_str ± delta months."""
+    year, mon = map(int, month_str.split("-"))
+    mon += delta
+    while mon > 12:
+        mon -= 12; year += 1
+    while mon < 1:
+        mon += 12; year -= 1
+    return f"{year:04d}-{mon:02d}", f"{MONTHS_RU[mon]} {year}"
+
+NAV_CSS = """
+  .month-nav { display:flex; align-items:center; justify-content:space-between;
+               margin-bottom:28px; gap:12px; }
+  .nav-btn { background:var(--card); border:1px solid var(--border); border-radius:8px;
+             padding:7px 16px; font-size:13px; color:var(--text); text-decoration:none;
+             transition:border-color .15s; white-space:nowrap; }
+  .nav-btn:hover { border-color:var(--accent); color:var(--accent); }
+  .nav-disabled { color:var(--muted); cursor:default; pointer-events:none; }
+  .nav-center { text-align:center; }
+  .nav-current { font-size:16px; font-weight:700; }
+  .nav-updated { font-size:11px; color:var(--muted); margin-top:3px; }
+"""
+
+def _html_shell(title: str, month_label: str, month_str: str, body: str,
+                page_file: str = "phil.html",
+                prev_month: tuple | None = None,
+                next_month: tuple | None = None) -> str:
+    """
+    page_file  — 'phil.html' or 'kirill.html'
+    prev_month — (YYYY-MM, label) | None
+    next_month — (YYYY-MM, label) | None
+    Links point to sibling months: ../YYYY-MM/page_file
+    """
     ts = datetime.datetime.now().strftime("%d.%m.%Y %H:%M")
+    prev_btn = (
+        f'<a class="nav-btn" href="../{prev_month[0]}/{page_file}">← {prev_month[1]}</a>'
+        if prev_month else '<span class="nav-btn nav-disabled">←</span>'
+    )
+    next_btn = (
+        f'<a class="nav-btn" href="../{next_month[0]}/{page_file}">{next_month[1]} →</a>'
+        if next_month else '<span class="nav-btn nav-disabled">→</span>'
+    )
     return f"""<!DOCTYPE html>
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{title} — {month_label}</title>
-<style>{BASE_CSS}</style>
+<style>{BASE_CSS}{NAV_CSS}</style>
 </head>
 <body>
-<h1>{title}</h1>
-<div class="subtitle">Период: {month_label} &nbsp;·&nbsp; Обновлено: {ts}</div>
+<div class="month-nav">
+  {prev_btn}
+  <div class="nav-center">
+    <div class="nav-current">{month_label}</div>
+    <div class="nav-updated">Обновлено {ts}</div>
+  </div>
+  {next_btn}
+</div>
 {body}
 <footer>W3A Motivation Calculator · {DOMAIN}</footer>
 </body>
 </html>"""
 
 
-def generate_html_phil(month_label: str, phil: dict, output_path: str) -> None:
+def generate_html_phil(month_label: str, month_str: str, phil: dict, output_path: str,
+                       prev_month: tuple | None = None,
+                       next_month: tuple | None = None) -> None:
     """Страница мотивации Филиппа Тимуша."""
     eo_rev   = phil.get("eo_revenue", 0)
     np_rev   = phil.get("non_paid_rev", 0)
@@ -516,12 +570,16 @@ def generate_html_phil(month_label: str, phil: dict, output_path: str) -> None:
   </div>
 </div>
 """
-    html = _html_shell("Мотивация — Филипп Тимуш", month_label, body)
+    html = _html_shell("Мотивация — Филипп Тимуш", month_label, month_str, body,
+                       page_file="phil.html",
+                       prev_month=prev_month, next_month=next_month)
     Path(output_path).write_text(html, encoding="utf-8")
     print(f"  Фил:    {output_path}")
 
 
-def generate_html_kirill(month_label: str, kirill: dict, output_path: str) -> None:
+def generate_html_kirill(month_label: str, month_str: str, kirill: dict, output_path: str,
+                         prev_month: tuple | None = None,
+                         next_month: tuple | None = None) -> None:
     """Страница мотивации Кирилла Осипова."""
     if "error" in kirill:
         body = f"""
@@ -615,17 +673,72 @@ def generate_html_kirill(month_label: str, kirill: dict, output_path: str) -> No
   </div>
 </div>
 """
-    html = _html_shell("Мотивация — Кирилл Осипов", month_label, body)
+    html = _html_shell("Мотивация — Кирилл Осипов", month_label, month_str, body,
+                       page_file="kirill.html",
+                       prev_month=prev_month, next_month=next_month)
     Path(output_path).write_text(html, encoding="utf-8")
     print(f"  Кирилл: {output_path}")
 
 # ── CLI ────────────────────────────────────────────────────────────────────────
 
-MONTHS_RU = {
-    1: "Январь", 2: "Февраль", 3: "Март", 4: "Апрель",
-    5: "Май", 6: "Июнь", 7: "Июль", 8: "Август",
-    9: "Сентябрь", 10: "Октябрь", 11: "Ноябрь", 12: "Декабрь",
-}
+def _write_index(out_dir: Path, latest_month_str: str, latest_label: str) -> None:
+    """Обновляет index.html — список всех сгенерированных месяцев."""
+    # Собираем все существующие папки YYYY-MM
+    months = sorted(
+        [d.name for d in out_dir.iterdir()
+         if d.is_dir() and len(d.name) == 7 and d.name[4] == "-"],
+        reverse=True,
+    )
+    month_links = ""
+    for m in months:
+        year, mon = map(int, m.split("-"))
+        label = f"{MONTHS_RU[mon]} {year}"
+        is_latest = " (текущий)" if m == latest_month_str else ""
+        month_links += (
+            f'<li><a href="{m}/phil.html">Филипп</a>'
+            f' &nbsp;·&nbsp; <a href="{m}/kirill.html">Кирилл</a>'
+            f' &nbsp;— <span class="month-name">{label}{is_latest}</span></li>\n'
+        )
+
+    html = f"""<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>W3A Motivation</title>
+<style>
+  :root{{--bg:#0f1117;--card:#1a1d27;--border:#2d3045;--text:#e8eaf6;--muted:#8892b0;--accent:#6c63ff;}}
+  *{{box-sizing:border-box;margin:0;padding:0;}}
+  body{{background:var(--bg);color:var(--text);font-family:-apple-system,'Segoe UI',sans-serif;
+        display:flex;flex-direction:column;align-items:center;justify-content:center;
+        min-height:100vh;padding:32px 24px;}}
+  h1{{font-size:22px;font-weight:700;margin-bottom:6px;}}
+  .sub{{color:var(--muted);font-size:13px;margin-bottom:36px;}}
+  .months{{background:var(--card);border:1px solid var(--border);border-radius:12px;
+           padding:24px;width:100%;max-width:480px;}}
+  .months h2{{font-size:13px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);
+              margin-bottom:16px;}}
+  ul{{list-style:none;}}
+  li{{padding:10px 0;border-top:1px solid var(--border);font-size:14px;}}
+  li:first-child{{border-top:none;}}
+  a{{color:var(--accent);text-decoration:none;}}
+  a:hover{{text-decoration:underline;}}
+  .month-name{{color:var(--muted);font-size:13px;}}
+  footer{{color:var(--muted);font-size:12px;margin-top:40px;}}
+</style>
+</head>
+<body>
+<h1>Мотивация W3A</h1>
+<p class="sub">Выбери месяц и сотрудника</p>
+<div class="months">
+  <h2>Доступные месяцы</h2>
+  <ul>{month_links or "<li style='color:var(--muted)'>Нет данных</li>"}</ul>
+</div>
+<footer>Обновляется автоматически 1-го числа каждого месяца</footer>
+</body>
+</html>"""
+    (out_dir / "index.html").write_text(html, encoding="utf-8")
+
 
 def month_timestamps(month_str: str) -> tuple[int, int, str]:
     """Returns (ts_from, ts_to, label) for a given 'YYYY-MM' string."""
@@ -689,11 +802,29 @@ def main():
         print(f"   Мин. %: {pct_label(kirill['min_pct'])} → бонус {fmt_rub(kirill['bonus'])}")
         print(f"   Выплата: {fmt_rub(kirill['total_payout'])}")
 
+    # Папка per-month: out_dir/YYYY-MM/
+    month_dir = out_dir / month_str
+    month_dir.mkdir(parents=True, exist_ok=True)
+
+    prev_month = _adjacent_month(month_str, -1)
+    next_month = _adjacent_month(month_str, +1)
+    # Показываем «следующий» только если он не в будущем
+    now_str = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m")
+    if next_month[0] > now_str:
+        next_month = None
+
     print("\n🖥️  Генерирую HTML-страницы…")
-    phil_path   = out_dir / "phil.html"
-    kirill_path = out_dir / "kirill.html"
-    generate_html_phil(month_label, phil, str(phil_path))
-    generate_html_kirill(month_label, kirill, str(kirill_path))
+    phil_path   = month_dir / "phil.html"
+    kirill_path = month_dir / "kirill.html"
+    generate_html_phil(month_label, month_str, phil, str(phil_path),
+                       prev_month=prev_month, next_month=next_month)
+    generate_html_kirill(month_label, month_str, kirill, str(kirill_path),
+                         prev_month=prev_month, next_month=next_month)
+
+    # Обновляем index.html → редирект на последний сгенерированный месяц
+    index_path = out_dir / "index.html"
+    _write_index(out_dir, month_str, month_label)
+
     print(f"\n✅ Готово!")
     print(f"   Фил:    {phil_path.resolve()}")
     print(f"   Кирилл: {kirill_path.resolve()}")
