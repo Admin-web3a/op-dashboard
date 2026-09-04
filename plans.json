@@ -36,5 +36,18 @@
     "sla_yellow_hours": 4,
     "sla_red_hours": 24,
     "revenue_adjustment": -64575
+  },
+  "2026-09": {
+    "managers": {
+      "12377210": { "revenue": 1350000 },
+      "11176694": { "revenue":  950000 },
+      "6461602":  { "revenue": 1350000 },
+      "11181290": { "revenue": 1350000 }
+    },
+    "aging_yellow_days": 7,
+    "aging_red_days": 14,
+    "sla_yellow_hours": 4,
+    "sla_red_hours": 24,
+    "revenue_adjustment": 0
   }
 }
