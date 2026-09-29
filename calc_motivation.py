@@ -62,12 +62,14 @@ UTM_CAMPAIGN_FIELD = 1323543   # UTM Campaign
 
 # UTM-источники, которые считаются non-paid (email/TG/боты)
 # Обнови под реальные значения utm_source и utm_medium в вашем проекте
-NON_PAID_SOURCES = set(
-    os.environ.get("NON_PAID_SOURCES", "email,tg,telegram,bot,tg_channel,organic,tg_post").split(",")
-)
-NON_PAID_MEDIUMS = set(
-    os.environ.get("NON_PAID_MEDIUMS", "email,tg_post,tg_channel,bot,newsletter,organic").split(",")
-)
+def _env_set(name: str, default: str) -> set:
+    """Пустая переменная (например, незаданный секрет в GitHub Actions) = значения по умолчанию.
+    Пустые элементы отбрасываются, иначе сделки без UTM попали бы в non-paid."""
+    raw = os.environ.get(name) or default
+    return {s.strip().lower() for s in raw.split(",") if s.strip()}
+
+NON_PAID_SOURCES = _env_set("NON_PAID_SOURCES", "email,tg,telegram,bot,tg_channel,organic,tg_post")
+NON_PAID_MEDIUMS = _env_set("NON_PAID_MEDIUMS", "email,tg_post,tg_channel,bot,newsletter,organic")
 
 # Google Sheets медиаплан (публичный — auth не нужен)
 SHEETS_ID  = "1A6cMBmHVz2-5ctwVeyHy4LMl5vbnucQ4_EGXnIAGmUY"
