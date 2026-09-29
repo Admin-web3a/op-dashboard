@@ -56,8 +56,6 @@ jobs:
         env:
           AMO_TOKEN: ${{ secrets.AMO_TOKEN }}
           AMO_DOMAIN: simmihur.amocrm.ru
-          NON_PAID_SOURCES: ${{ secrets.NON_PAID_SOURCES }}
-          NON_PAID_MEDIUMS: ${{ secrets.NON_PAID_MEDIUMS }}
           IN_MONTH: ${{ github.event.inputs.month }}
           IN_ONLY: ${{ github.event.inputs.only }}
           IN_PLAN_CPL: ${{ github.event.inputs.kirill_plan_cpl }}

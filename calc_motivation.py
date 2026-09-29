@@ -56,9 +56,13 @@ MD_PAID_STATUS = 87315374
 PR_PAID_STATUS = 88019034
 
 # Custom field IDs (UTM)
-UTM_SOURCE_FIELD   = 1323539   # UTM Source
+UTM_SOURCE_FIELD   = 1323539   # UTM Source (заполняется лендингами Money-Dick / PetRock)
 UTM_MEDIUM_FIELD   = 1323541   # UTM Medium
 UTM_CAMPAIGN_FIELD = 1323543   # UTM Campaign
+UTM_SOURCE_ALL_FIELD   = 1316441   # utm_source_все — все касания через запятую, последнее = последнее касание
+UTM_SOURCE_TRACK_FIELD = 180535    # utm_source (tracking_data amoCRM)
+WORK_SOURCE_FIELD      = 1321741   # Рабочий источник
+CLOSE_REASON_FIELD     = 180637    # Причина закрытия
 
 # UTM-источники, которые считаются non-paid (email/TG/боты)
 # Обнови под реальные значения utm_source и utm_medium в вашем проекте
@@ -68,8 +72,16 @@ def _env_set(name: str, default: str) -> set:
     raw = os.environ.get(name) or default
     return {s.strip().lower() for s in raw.split(",") if s.strip()}
 
-NON_PAID_SOURCES = _env_set("NON_PAID_SOURCES", "email,tg,telegram,bot,tg_channel,organic,tg_post")
-NON_PAID_MEDIUMS = _env_set("NON_PAID_MEDIUMS", "email,tg_post,tg_channel,bot,newsletter,organic")
+# Non-paid base Фила считается только по основной воронке ОП
+# (сделки Money-Dick / PetRock уже оплачены через бонус Entry Offer).
+OP_PIPELINE_ID = 9826550        # Основная воронка ОП
+OP_TEST_REASON = "ТЕСТ"
+
+# utm_source последнего касания: TG-канал, рассылка (mailing / Unisender), бот (GetCourse)
+NON_PAID_SOURCES = _env_set("NON_PAID_SOURCES", "tgc,mailing,unisender,getcourse")
+
+# «Рабочий источник» вида «Пуш мг_2907», «Пуш быстрый старт 13_08»
+NON_PAID_WORK_SOURCE_RE = re.compile(r"^\s*пуш", re.IGNORECASE)
 
 # Google Sheets медиаплан (публичный — auth не нужен)
 SHEETS_ID  = "1A6cMBmHVz2-5ctwVeyHy4LMl5vbnucQ4_EGXnIAGmUY"
@@ -224,10 +236,62 @@ def get_utm_value(lead: dict, field_id: int) -> str:
             return vals[0]["value"].lower().strip() if vals else ""
     return ""
 
-def is_non_paid(lead: dict) -> bool:
-    src = get_utm_value(lead, UTM_SOURCE_FIELD)
-    med = get_utm_value(lead, UTM_MEDIUM_FIELD)
-    return src in NON_PAID_SOURCES or med in NON_PAID_MEDIUMS
+def get_field_value(lead: dict, field_id: int) -> str:
+    for cf in lead.get("custom_fields_values", []) or []:
+        if cf["field_id"] == field_id:
+            vals = cf.get("values") or []
+            return str(vals[0].get("value") or "").strip() if vals else ""
+    return ""
+
+def last_touch_source(lead: dict) -> str:
+    """utm_source последнего касания: последний элемент utm_source_все,
+    иначе одиночные поля UTM Source / utm_source."""
+    all_touches = [s.strip() for s in get_field_value(lead, UTM_SOURCE_ALL_FIELD).split(",") if s.strip()]
+    if all_touches:
+        return all_touches[-1].lower()
+    return (get_field_value(lead, UTM_SOURCE_FIELD)
+            or get_field_value(lead, UTM_SOURCE_TRACK_FIELD)).lower()
+
+def non_paid_reason(lead: dict) -> str | None:
+    """Почему сделка ОП засчитана в non-paid (текст для отчёта) или None."""
+    src = last_touch_source(lead)
+    if src in NON_PAID_SOURCES:
+        return f"utm_source: {src}"
+    work = get_field_value(lead, WORK_SOURCE_FIELD)
+    if NON_PAID_WORK_SOURCE_RE.match(work):
+        return f"Рабочий источник: {work}"
+    return None
+
+def calc_non_paid(ts_from: int, ts_to: int) -> tuple[float, list]:
+    """Non-paid base: продажи основной воронки ОП в статусе «Успешно реализовано»,
+    перешедшие в статус в этом месяце, с non-paid последним касанием. Выручка — бюджет сделки."""
+    leads = fetch_all_pages(
+        f"leads?filter[statuses][0][pipeline_id]={OP_PIPELINE_ID}"
+        f"&filter[statuses][0][status_id]={SUCCESS_STATUS}"
+        f"&filter[closed_at][from]={ts_from}"
+        f"&filter[closed_at][to]={ts_to}"
+        f"&with=custom_fields&limit=250&page={{page}}",
+        key="leads",
+    )
+    total, deals = 0.0, []
+    for lead in leads:
+        if get_field_value(lead, CLOSE_REASON_FIELD) == OP_TEST_REASON:
+            continue
+        reason = non_paid_reason(lead)
+        if not reason:
+            continue
+        amount = float(lead.get("price") or 0)
+        total += amount
+        deals.append({
+            "id":     lead["id"],
+            "name":   lead["name"],
+            "amount": amount,
+            "date":   datetime.datetime.fromtimestamp(lead["closed_at"], MSK).strftime("%d.%m.%Y"),
+            "reason": reason,
+        })
+    deals.sort(key=lambda d: d["date"][6:] + d["date"][3:5] + d["date"][:2])
+    print(f"    ОП: {len(leads)} продаж в месяце, из них non-paid: {len(deals)}")
+    return total, deals
 
 # ── Расчёт мотивации Фила ──────────────────────────────────────────────────────
 
@@ -273,11 +337,8 @@ def calc_phil(ts_from: int, ts_to: int) -> dict:
 
         src      = get_utm_value(deal, UTM_SOURCE_FIELD)
         med      = get_utm_value(deal, UTM_MEDIUM_FIELD)
-        non_paid = is_non_paid(deal)
 
-        eo_revenue   += amount
-        if non_paid:
-            non_paid_rev += amount
+        eo_revenue += amount
 
         deal_details.append({
             "id":         deal["id"],
@@ -289,7 +350,6 @@ def calc_phil(ts_from: int, ts_to: int) -> dict:
                           else "дата оплаты",
             "utm_source": src,
             "utm_medium": med,
-            "non_paid":   non_paid,
         })
 
     deal_details.sort(key=lambda d: d["date"][6:] + d["date"][3:5] + d["date"][:2])
@@ -297,7 +357,8 @@ def calc_phil(ts_from: int, ts_to: int) -> dict:
         print(f"    {name}: {sum(1 for d in deal_details if d['pipeline'] == name)} оплаченных сделок в месяце")
     if no_payment:
         print(f"    ⚠️  «Успешно реализовано» с ценой, но без платёжной ноты (не учтены): {no_payment}")
-    all_deals = deal_details
+
+    non_paid_rev, np_deals = calc_non_paid(ts_from, ts_to)
 
     eo_rate  = get_eo_rate(eo_revenue)
     np_rate  = get_non_paid_rate(eo_revenue)
@@ -314,8 +375,9 @@ def calc_phil(ts_from: int, ts_to: int) -> dict:
         "np_bonus":       np_bonus,
         "total_bonus":    total_bonus,
         "total_payout":   PHIL_SALARY + total_bonus,
-        "deal_count":     len(all_deals),
+        "deal_count":     len(deal_details),
         "deals":          deal_details,
+        "np_deals":       np_deals,
     }
 
 # ── Расчёт мотивации Кирилла ───────────────────────────────────────────────────
@@ -438,10 +500,10 @@ BASE_CSS = """
   .tiers-table td { padding: 8px 12px; border-top: 1px solid var(--border); }
   .active-tier td { background: #1e2235; color: var(--green); font-weight: 700; }
   .deals-toggle { color: var(--accent); cursor: pointer; font-size: 13px; border: none; background: none; margin-top: 20px; padding: 0; }
-  #deals-table { display: none; margin-top: 16px; overflow-x: auto; }
-  #deals-table table { width: 100%; border-collapse: collapse; font-size: 12px; }
-  #deals-table th { background: #12141e; color: var(--muted); text-align: left; padding: 8px 10px; font-size: 11px; text-transform: uppercase; }
-  #deals-table td { padding: 7px 10px; border-top: 1px solid var(--border); }
+  .deals-list { display: none; margin-top: 16px; overflow-x: auto; }
+  .deals-list table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .deals-list th { background: #12141e; color: var(--muted); text-align: left; padding: 8px 10px; font-size: 11px; text-transform: uppercase; }
+  .deals-list td { padding: 7px 10px; border-top: 1px solid var(--border); }
   .alert { background: #2d1b1b; border: 1px solid #d63031; border-radius: 8px; padding: 16px; color: #ff7675; font-size: 13px; }
   footer { text-align: center; color: var(--muted); font-size: 12px; margin-top: 40px; }
 """
@@ -526,13 +588,6 @@ def generate_html_phil(month_label: str, month_str: str, phil: dict, output_path
 
     deals_rows = ""
     for d in phil.get("deals", []):
-        np_badge = (
-            '<span style="background:#00b894;color:#fff;padding:2px 6px;'
-            'border-radius:4px;font-size:11px">non-paid</span>'
-            if d["non_paid"] else
-            '<span style="background:#2d3045;color:#8892b0;padding:2px 6px;'
-            'border-radius:4px;font-size:11px">paid</span>'
-        )
         deals_rows += (
             f"<tr><td>{d['date']}</td>"
             f"<td><a href=\"https://{DOMAIN}/leads/detail/{d['id']}\" target=\"_blank\" "
@@ -540,8 +595,17 @@ def generate_html_phil(month_label: str, month_str: str, phil: dict, output_path
             f"<td>{d['pipeline']}</td>"
             f"<td>{fmt_rub(d['amount'])}</td>"
             f"<td style=\"color:var(--muted)\">{d['logic']}</td>"
-            f"<td>{d['utm_source']}</td><td>{d['utm_medium']}</td>"
-            f"<td>{np_badge}</td></tr>\n"
+            f"<td>{d['utm_source']}</td><td>{d['utm_medium']}</td></tr>\n"
+        )
+
+    np_rows = ""
+    for d in phil.get("np_deals", []):
+        np_rows += (
+            f"<tr><td>{d['date']}</td>"
+            f"<td><a href=\"https://{DOMAIN}/leads/detail/{d['id']}\" target=\"_blank\" "
+            f"style=\"color:var(--text);text-decoration:none\">{d['name']}</a></td>"
+            f"<td>{fmt_rub(d['amount'])}</td>"
+            f"<td style=\"color:var(--muted)\">{d['reason']}</td></tr>\n"
         )
 
     body = f"""
@@ -587,7 +651,7 @@ def generate_html_phil(month_label: str, month_str: str, phil: dict, output_path
 
 <div class="section">
   <div class="section-header">
-    <div class="section-title">Non-paid base (email / TG / боты)</div>
+    <div class="section-title">Non-paid base — основная воронка ОП (TG-канал / рассылки / боты / пуши)</div>
     <div class="payout-chip">{fmt_rub(np_bonus)}</div>
   </div>
   <div class="metric-grid">
@@ -611,19 +675,28 @@ def generate_html_phil(month_label: str, month_str: str, phil: dict, output_path
       <tr class="{'active-tier' if eo_rev<1_000_000 else ''}"><td>до 1 млн</td><td>8%</td></tr>
     </tbody></table>
   </div>
+  <button class="deals-toggle" onclick="var t=document.getElementById('np-table'); t.style.display=t.style.display==='none'?'block':'none'">
+    ▾ Сделки non-paid ({len(phil.get('np_deals', []))})
+  </button>
+  <div id="np-table" class="deals-list">
+    <table style="margin-top:14px">
+      <thead><tr><th>Дата УР</th><th>Сделка ОП</th><th>Бюджет</th><th>Засчитана по</th></tr></thead>
+      <tbody>{np_rows or "<tr><td colspan='4' style='color:var(--muted);text-align:center;padding:16px'>Сделок non-paid в этом месяце нет</td></tr>"}</tbody>
+    </table>
+  </div>
 </div>
 
 <div class="section">
   <div class="section-header">
-    <div class="section-title">Оплаченные сделки ({phil.get('deal_count', 0)})</div>
+    <div class="section-title">Оплаченные сделки Entry Offer ({phil.get('deal_count', 0)})</div>
   </div>
   <button class="deals-toggle" onclick="var t=document.getElementById('deals-table'); t.style.display=t.style.display==='none'?'block':'none'">
     ▾ Показать / скрыть список
   </button>
-  <div id="deals-table">
+  <div id="deals-table" class="deals-list">
     <table style="margin-top:14px">
-      <thead><tr><th>Дата</th><th>Сделка</th><th>Воронка</th><th>Сумма</th><th>Учтена по</th><th>utm_source</th><th>utm_medium</th><th>Тип</th></tr></thead>
-      <tbody>{deals_rows or "<tr><td colspan='8' style='color:var(--muted);text-align:center;padding:16px'>Сделок в этом месяце не найдено</td></tr>"}</tbody>
+      <thead><tr><th>Дата</th><th>Сделка</th><th>Воронка</th><th>Сумма</th><th>Учтена по</th><th>utm_source</th><th>utm_medium</th></tr></thead>
+      <tbody>{deals_rows or "<tr><td colspan='7' style='color:var(--muted);text-align:center;padding:16px'>Сделок в этом месяце не найдено</td></tr>"}</tbody>
     </table>
   </div>
 </div>
