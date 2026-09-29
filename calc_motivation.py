@@ -15,6 +15,8 @@ W3A Motivation Calculator
 """
 
 import urllib.request
+import urllib.error
+import time
 import json
 import os
 import re
@@ -22,6 +24,7 @@ import csv
 import io
 import argparse
 import datetime
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 # ── .env ───────────────────────────────────────────────────────────────────────
@@ -74,6 +77,8 @@ SHEETS_GID = 0   # лист «Медиаплан»
 PHIL_SALARY   = 160_000
 KIRILL_SALARY = 150_000
 
+MSK = datetime.timezone(datetime.timedelta(hours=3))   # границы месяца — по Москве
+
 MONTHS_RU = {
     1: "Январь", 2: "Февраль", 3: "Март", 4: "Апрель",
     5: "Май", 6: "Июнь", 7: "Июль", 8: "Август",
@@ -123,9 +128,17 @@ def get_kirill_bonus(pct: float) -> int:
 def api_get(path: str) -> dict:
     url = f"https://{DOMAIN}/api/v4/{path}"
     req = urllib.request.Request(url, headers={"Authorization": f"Bearer {TOKEN}"})
-    with urllib.request.urlopen(req, timeout=25) as r:
-        body = r.read()
-        return json.loads(body) if body.strip() else {}
+    for attempt in range(5):
+        try:
+            with urllib.request.urlopen(req, timeout=25) as r:
+                body = r.read()
+                return json.loads(body) if body.strip() else {}
+        except urllib.error.HTTPError as e:
+            if e.code == 429 and attempt < 4:   # лимит amoCRM — подождать и повторить
+                time.sleep(1.5 * (attempt + 1))
+                continue
+            raise
+    return {}
 
 def fetch_all_pages(path_template: str, key: str = "leads") -> list:
     """Fetch paginated results from amoCRM."""
@@ -142,47 +155,65 @@ def fetch_all_pages(path_template: str, key: str = "leads") -> list:
         page += 1
     return results
 
-MD_LAST_EVENT_FIELD = 1323553   # MD Last Event (текстовое поле в Money-Dick/PetRock)
+SUCCESS_STATUS = 142   # «Успешно реализовано» (общий для всех воронок)
 
-def fetch_paid_deals(pipeline_id: int, status_id: int,
-                     ts_from: int, ts_to: int) -> list:
-    """Сделки в статусе «Оплачено», обновлённые в заданном диапазоне,
-    с MD Last Event = 'paid' (реально оплатили, не просто передвинули статус)."""
-    path = (
-        f"leads?filter[pipeline_id][0]={pipeline_id}"
-        f"&filter[status_id][0]={status_id}"
+def fetch_candidate_deals(pipeline_id: int, paid_status_id: int,
+                          ts_from: int, ts_to: int) -> list:
+    """Кандидаты на оплату в месяце. Итоговая проверка даты — в calc_phil.
+
+    1) «Оплачено» — сделка ещё не закрыта. Дата оплаты (нота paid) всегда не раньше
+       начала месяца, а updated_at не раньше даты оплаты, поэтому
+       updated_at >= начало месяца — безопасный фильтр (верхнюю границу не ставим).
+    2) «Успешно реализовано» — по дате перехода в статус (closed_at) в месяце.
+    """
+    # ВАЖНО: фильтр по статусу — только через filter[statuses][i][pipeline_id/status_id].
+    # Обычный filter[status_id] amoCRM молча игнорирует и отдаёт всю воронку.
+    paid = fetch_all_pages(
+        f"leads?filter[statuses][0][pipeline_id]={pipeline_id}"
+        f"&filter[statuses][0][status_id]={paid_status_id}"
         f"&filter[updated_at][from]={ts_from}"
-        f"&filter[updated_at][to]={ts_to}"
-        f"&with=custom_fields&limit=250&page={{page}}"
+        f"&with=custom_fields&limit=250&page={{page}}",
+        key="leads",
     )
-    all_leads = fetch_all_pages(path, key="leads")
-    # Фильтруем только те, у которых MD Last Event = 'paid'
-    confirmed = []
-    for lead in all_leads:
-        for cf in lead.get("custom_fields_values", []) or []:
-            if cf["field_id"] == MD_LAST_EVENT_FIELD:
-                vals = [v["value"].lower() for v in cf.get("values", [])]
-                if "paid" in vals:
-                    confirmed.append(lead)
-                    break
-    return confirmed
+    closed = fetch_all_pages(
+        f"leads?filter[statuses][0][pipeline_id]={pipeline_id}"
+        f"&filter[statuses][0][status_id]={SUCCESS_STATUS}"
+        f"&filter[closed_at][from]={ts_from}"
+        f"&filter[closed_at][to]={ts_to}"
+        f"&with=custom_fields&limit=250&page={{page}}",
+        key="leads",
+    )
+    return paid + closed
 
 def fetch_deal_notes(lead_id: int) -> list:
     return fetch_all_pages(
         f"leads/{lead_id}/notes?limit=250&page={{page}}", key="notes"
     )
 
-def parse_payment_note(text: str) -> float | None:
-    """Парсит сумму только из ноты события 'paid' (содержит transactionId).
-    Исключает checkout_intent_created / payment_ready где amount — интент, не факт.
+def extract_payment(notes: list) -> tuple[float, int] | None:
+    """Оплата по сделке: (сумма, время оплаты) или None.
+
+    Оплатой считается нота с событием `paid` (первая строка: «Moneydick event: paid» /
+    «Petrock event: paid»). Одного transactionId недостаточно: он есть и у неуспешных
+    платежей (payment_failed). Дубли нот с одним transactionId схлопываются.
+    Одна сделка = одна оплата: если платежей несколько — берём самый ранний.
     """
-    if not text:
+    payments = {}
+    for note in notes:
+        text = (note.get("params", {}) or {}).get("text", "") or ""
+        first_line = text.split("\n", 1)[0]
+        if not re.search(r'event:\s*paid\s*$', first_line):
+            continue
+        tx = re.search(r'transactionId:\s*(\S+)', text)
+        am = re.search(r'amount:\s*([\d.]+)', text)
+        if not (tx and am):
+            continue
+        ts = note.get("created_at", 0)
+        if tx.group(1) not in payments or ts < payments[tx.group(1)][1]:
+            payments[tx.group(1)] = (float(am.group(1)), ts)
+    if not payments:
         return None
-    # Только нота с реальным платежом содержит transactionId
-    if "transactionId" not in text:
-        return None
-    m = re.search(r'amount:\s*([\d.]+)', text)
-    return float(m.group(1)) if m else None
+    return min(payments.values(), key=lambda p: p[1])
 
 def get_utm_value(lead: dict, field_id: int) -> str:
     for cf in lead.get("custom_fields_values", []) or []:
@@ -200,33 +231,43 @@ def is_non_paid(lead: dict) -> bool:
 
 def calc_phil(ts_from: int, ts_to: int) -> dict:
     print("  Загружаю сделки из amoCRM…")
-    all_deals = []
+    candidates = {}
     for pid, sid, name in [
         (MD_PIPELINE_ID, MD_PAID_STATUS, "Money-Dick"),
         (PR_PIPELINE_ID, PR_PAID_STATUS, "PetRock"),
     ]:
-        deals = fetch_paid_deals(pid, sid, ts_from, ts_to)
-        print(f"    {name}: {len(deals)} оплаченных сделок")
+        deals = fetch_candidate_deals(pid, sid, ts_from, ts_to)
+        print(f"    {name}: {len(deals)} кандидатов")
         for d in deals:
             d["_pipeline"] = name
-        all_deals.extend(deals)
+            candidates[d["id"]] = d      # дедуп по id сделки
 
     eo_revenue    = 0.0
     non_paid_rev  = 0.0
     deal_details  = []
+    no_payment    = []      # закрытые сделки с ценой, но без платёжной ноты
 
-    for deal in all_deals:
-        notes = fetch_deal_notes(deal["id"])
-        amount = 0.0
-        for note in notes:
-            text = (note.get("params", {}) or {}).get("text", "")
-            amt  = parse_payment_note(text)
-            if amt is not None:
-                amount += amt
+    print(f"    Читаю ноты по {len(candidates)} сделкам…", flush=True)
+    with ThreadPoolExecutor(max_workers=4) as pool:      # лимит amoCRM ~7 запросов/с
+        notes_by_id = dict(zip(candidates, pool.map(fetch_deal_notes, candidates)))
 
-        # Fallback: поле price в сделке
-        if amount == 0:
-            amount = float(deal.get("price", 0) or 0)
+    for deal in candidates.values():
+        payment = extract_payment(notes_by_id[deal["id"]])
+        if payment is None:
+            if deal["status_id"] == SUCCESS_STATUS and (deal.get("price") or 0) > 0:
+                no_payment.append(deal["id"])
+            continue
+        amount, paid_ts = payment
+
+        # Дата отнесения к месяцу:
+        #   «Успешно реализовано» — дата перехода в статус (closed_at),
+        #   «Оплачено»            — дата платёжной ноты.
+        if deal["status_id"] == SUCCESS_STATUS and deal.get("closed_at"):
+            counted_ts = deal["closed_at"]
+        else:
+            counted_ts = paid_ts
+        if not (ts_from <= counted_ts <= ts_to):
+            continue
 
         src      = get_utm_value(deal, UTM_SOURCE_FIELD)
         med      = get_utm_value(deal, UTM_MEDIUM_FIELD)
@@ -237,13 +278,24 @@ def calc_phil(ts_from: int, ts_to: int) -> dict:
             non_paid_rev += amount
 
         deal_details.append({
+            "id":         deal["id"],
             "name":       deal["name"],
             "pipeline":   deal["_pipeline"],
             "amount":     amount,
+            "date":       datetime.datetime.fromtimestamp(counted_ts, MSK).strftime("%d.%m.%Y"),
+            "logic":      "перенос в «Успешно реализовано»" if deal["status_id"] == SUCCESS_STATUS
+                          else "дата оплаты",
             "utm_source": src,
             "utm_medium": med,
             "non_paid":   non_paid,
         })
+
+    deal_details.sort(key=lambda d: d["date"][6:] + d["date"][3:5] + d["date"][:2])
+    for name in ("Money-Dick", "PetRock"):
+        print(f"    {name}: {sum(1 for d in deal_details if d['pipeline'] == name)} оплаченных сделок в месяце")
+    if no_payment:
+        print(f"    ⚠️  «Успешно реализовано» с ценой, но без платёжной ноты (не учтены): {no_payment}")
+    all_deals = deal_details
 
     eo_rate  = get_eo_rate(eo_revenue)
     np_rate  = get_non_paid_rate(eo_revenue)
@@ -480,8 +532,12 @@ def generate_html_phil(month_label: str, month_str: str, phil: dict, output_path
             'border-radius:4px;font-size:11px">paid</span>'
         )
         deals_rows += (
-            f"<tr><td>{d['name']}</td><td>{d['pipeline']}</td>"
+            f"<tr><td>{d['date']}</td>"
+            f"<td><a href=\"https://{DOMAIN}/leads/detail/{d['id']}\" target=\"_blank\" "
+            f"style=\"color:var(--text);text-decoration:none\">{d['name']}</a></td>"
+            f"<td>{d['pipeline']}</td>"
             f"<td>{fmt_rub(d['amount'])}</td>"
+            f"<td style=\"color:var(--muted)\">{d['logic']}</td>"
             f"<td>{d['utm_source']}</td><td>{d['utm_medium']}</td>"
             f"<td>{np_badge}</td></tr>\n"
         )
@@ -564,8 +620,8 @@ def generate_html_phil(month_label: str, month_str: str, phil: dict, output_path
   </button>
   <div id="deals-table">
     <table style="margin-top:14px">
-      <thead><tr><th>Сделка</th><th>Воронка</th><th>Сумма</th><th>utm_source</th><th>utm_medium</th><th>Тип</th></tr></thead>
-      <tbody>{deals_rows or "<tr><td colspan='6' style='color:var(--muted);text-align:center;padding:16px'>Сделок в этом месяце не найдено</td></tr>"}</tbody>
+      <thead><tr><th>Дата</th><th>Сделка</th><th>Воронка</th><th>Сумма</th><th>Учтена по</th><th>utm_source</th><th>utm_medium</th><th>Тип</th></tr></thead>
+      <tbody>{deals_rows or "<tr><td colspan='8' style='color:var(--muted);text-align:center;padding:16px'>Сделок в этом месяце не найдено</td></tr>"}</tbody>
     </table>
   </div>
 </div>
@@ -739,15 +795,29 @@ def _write_index(out_dir: Path, latest_month_str: str, latest_label: str) -> Non
 </html>"""
     (out_dir / "index.html").write_text(html, encoding="utf-8")
 
+    # Короткие ссылки /phil.html и /kirill.html → последний месяц, где страница есть.
+    # (Раньше эти файлы были самостоятельными страницами и устаревали.)
+    for page in ("phil.html", "kirill.html"):
+        latest = next((m for m in months if (out_dir / m / page).exists()), None)
+        if latest:
+            (out_dir / page).write_text(
+                f'<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8">'
+                f'<meta http-equiv="refresh" content="0; url={latest}/{page}">'
+                f'<link rel="canonical" href="{latest}/{page}">'
+                f'<title>Мотивация</title></head><body>'
+                f'<a href="{latest}/{page}">Открыть {latest}</a></body></html>',
+                encoding="utf-8",
+            )
+
 
 def month_timestamps(month_str: str) -> tuple[int, int, str]:
     """Returns (ts_from, ts_to, label) for a given 'YYYY-MM' string."""
     year, mon = map(int, month_str.split("-"))
-    dt_from = datetime.datetime(year, mon, 1, tzinfo=datetime.timezone.utc)
+    dt_from = datetime.datetime(year, mon, 1, tzinfo=MSK)
     if mon == 12:
-        dt_to = datetime.datetime(year + 1, 1, 1, tzinfo=datetime.timezone.utc)
+        dt_to = datetime.datetime(year + 1, 1, 1, tzinfo=MSK)
     else:
-        dt_to = datetime.datetime(year, mon + 1, 1, tzinfo=datetime.timezone.utc)
+        dt_to = datetime.datetime(year, mon + 1, 1, tzinfo=MSK)
     label = f"{MONTHS_RU[mon]} {year}"
     return int(dt_from.timestamp()), int(dt_to.timestamp()) - 1, label
 
@@ -761,16 +831,19 @@ def main():
     parser.add_argument("--kirill-actual-regs", type=float)
     parser.add_argument("--out-dir", default=".",
                         help="Директория для сохранения HTML-файлов (по умолчанию — текущая)")
+    parser.add_argument("--only", choices=["both", "phil", "kirill"], default="both",
+                        help="Какие страницы пересобирать. Автозапуск использует phil, "
+                             "чтобы не затирать страницу Кирилла (его цифры вносятся вручную)")
     args = parser.parse_args()
 
-    if not TOKEN:
+    if not TOKEN and args.only != "kirill":
         print("❌ AMO_TOKEN не найден. Добавь его в .env или переменную окружения.")
         return
 
     if args.month:
         month_str = args.month
     else:
-        now = datetime.datetime.now(datetime.timezone.utc)
+        now = datetime.datetime.now(MSK)
         month_str = now.strftime("%Y-%m")
 
     ts_from, ts_to, month_label = month_timestamps(month_str)
@@ -779,28 +852,31 @@ def main():
 
     print(f"\n📅 Расчёт мотивации за {month_label}\n")
 
-    print("📊 Фил — загружаю данные из amoCRM…")
-    phil = calc_phil(ts_from, ts_to)
-    print(f"   Entry Offer выручка: {fmt_rub(phil['eo_revenue'])}")
-    print(f"   Non-paid выручка:    {fmt_rub(phil['non_paid_rev'])}")
-    print(f"   Бонус EO:            {fmt_rub(phil['eo_bonus'])}")
-    print(f"   Бонус non-paid:      {fmt_rub(phil['np_bonus'])}")
-    print(f"   Выплата:             {fmt_rub(phil['total_payout'])}")
+    phil = kirill = None
+    if args.only in ("both", "phil"):
+        print("📊 Фил — загружаю данные из amoCRM…")
+        phil = calc_phil(ts_from, ts_to)
+        print(f"   Entry Offer выручка: {fmt_rub(phil['eo_revenue'])} ({phil['deal_count']} сделок)")
+        print(f"   Non-paid выручка:    {fmt_rub(phil['non_paid_rev'])}")
+        print(f"   Бонус EO:            {fmt_rub(phil['eo_bonus'])}")
+        print(f"   Бонус non-paid:      {fmt_rub(phil['np_bonus'])}")
+        print(f"   Выплата:             {fmt_rub(phil['total_payout'])}")
 
-    print("\n📊 Кирилл — загружаю данные из медиаплана…")
-    kirill = calc_kirill(
-        plan_cpl    = args.kirill_plan_cpl,
-        actual_cpl  = args.kirill_actual_cpl,
-        plan_regs   = args.kirill_plan_regs,
-        actual_regs = args.kirill_actual_regs,
-    )
-    if "error" in kirill:
-        print(f"   ⚠️  {kirill['error']}")
-    else:
-        print(f"   CPL:    план {fmt_rub(kirill['plan_cpl'])} → факт {fmt_rub(kirill['actual_cpl'])} ({pct_label(kirill['cpl_pct'])})")
-        print(f"   Рег.:   план {kirill['plan_regs']:.0f} → факт {kirill['actual_regs']:.0f} ({pct_label(kirill['regs_pct'])})")
-        print(f"   Мин. %: {pct_label(kirill['min_pct'])} → бонус {fmt_rub(kirill['bonus'])}")
-        print(f"   Выплата: {fmt_rub(kirill['total_payout'])}")
+    if args.only in ("both", "kirill"):
+        print("\n📊 Кирилл — загружаю данные из медиаплана…")
+        kirill = calc_kirill(
+            plan_cpl    = args.kirill_plan_cpl,
+            actual_cpl  = args.kirill_actual_cpl,
+            plan_regs   = args.kirill_plan_regs,
+            actual_regs = args.kirill_actual_regs,
+        )
+        if "error" in kirill:
+            print(f"   ⚠️  {kirill['error']}")
+        else:
+            print(f"   CPL:    план {fmt_rub(kirill['plan_cpl'])} → факт {fmt_rub(kirill['actual_cpl'])} ({pct_label(kirill['cpl_pct'])})")
+            print(f"   Рег.:   план {kirill['plan_regs']:.0f} → факт {kirill['actual_regs']:.0f} ({pct_label(kirill['regs_pct'])})")
+            print(f"   Мин. %: {pct_label(kirill['min_pct'])} → бонус {fmt_rub(kirill['bonus'])}")
+            print(f"   Выплата: {fmt_rub(kirill['total_payout'])}")
 
     # Папка per-month: out_dir/YYYY-MM/
     month_dir = out_dir / month_str
@@ -809,25 +885,27 @@ def main():
     prev_month = _adjacent_month(month_str, -1)
     next_month = _adjacent_month(month_str, +1)
     # Показываем «следующий» только если он не в будущем
-    now_str = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m")
+    now_str = datetime.datetime.now(MSK).strftime("%Y-%m")
     if next_month[0] > now_str:
         next_month = None
 
     print("\n🖥️  Генерирую HTML-страницы…")
     phil_path   = month_dir / "phil.html"
     kirill_path = month_dir / "kirill.html"
-    generate_html_phil(month_label, month_str, phil, str(phil_path),
-                       prev_month=prev_month, next_month=next_month)
-    generate_html_kirill(month_label, month_str, kirill, str(kirill_path),
-                         prev_month=prev_month, next_month=next_month)
+    if phil is not None:
+        generate_html_phil(month_label, month_str, phil, str(phil_path),
+                           prev_month=prev_month, next_month=next_month)
+    if kirill is not None:
+        generate_html_kirill(month_label, month_str, kirill, str(kirill_path),
+                             prev_month=prev_month, next_month=next_month)
 
-    # Обновляем index.html → редирект на последний сгенерированный месяц
-    index_path = out_dir / "index.html"
     _write_index(out_dir, month_str, month_label)
 
     print(f"\n✅ Готово!")
-    print(f"   Фил:    {phil_path.resolve()}")
-    print(f"   Кирилл: {kirill_path.resolve()}")
+    if phil is not None:
+        print(f"   Фил:    {phil_path.resolve()}")
+    if kirill is not None:
+        print(f"   Кирилл: {kirill_path.resolve()}")
 
 if __name__ == "__main__":
     main()

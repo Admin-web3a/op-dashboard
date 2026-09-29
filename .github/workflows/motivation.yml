@@ -1,13 +1,18 @@
 name: Motivation Pages
 
 on:
-  # Ручной запуск с параметрами
+  # Ручной запуск. По умолчанию пересобирается только страница Фила:
+  # цифры Кирилла (CPL/регистрации) вносятся вручную и не должны затираться.
   workflow_dispatch:
     inputs:
       month:
         description: "Месяц (YYYY-MM), пусто = текущий"
         required: false
         default: ""
+      only:
+        description: "Что пересобирать: phil / kirill / both"
+        required: false
+        default: "phil"
       kirill_plan_cpl:
         description: "Кирилл: план CPL (руб.)"
         required: false
@@ -25,13 +30,14 @@ on:
         required: false
         default: ""
 
-  # Автозапуск 1-го числа каждого месяца в 07:00 UTC (10:00 МСК)
+  # Каждый день в 08:00 МСК: текущий месяц (страница Фила).
+  # 1-го числа дополнительно финализируется предыдущий месяц.
   schedule:
-    - cron: "0 7 1 * *"
+    - cron: "0 5 * * *"
 
 concurrency:
   group: motivation-update
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
   contents: write
@@ -52,14 +58,30 @@ jobs:
           AMO_DOMAIN: simmihur.amocrm.ru
           NON_PAID_SOURCES: ${{ secrets.NON_PAID_SOURCES }}
           NON_PAID_MEDIUMS: ${{ secrets.NON_PAID_MEDIUMS }}
+          IN_MONTH: ${{ github.event.inputs.month }}
+          IN_ONLY: ${{ github.event.inputs.only }}
+          IN_PLAN_CPL: ${{ github.event.inputs.kirill_plan_cpl }}
+          IN_ACTUAL_CPL: ${{ github.event.inputs.kirill_actual_cpl }}
+          IN_PLAN_REGS: ${{ github.event.inputs.kirill_plan_regs }}
+          IN_ACTUAL_REGS: ${{ github.event.inputs.kirill_actual_regs }}
+          TZ: Europe/Moscow
         run: |
-          ARGS=""
-          [ -n "${{ github.event.inputs.month }}"             ] && ARGS="$ARGS --month ${{ github.event.inputs.month }}"
-          [ -n "${{ github.event.inputs.kirill_plan_cpl }}"   ] && ARGS="$ARGS --kirill-plan-cpl ${{ github.event.inputs.kirill_plan_cpl }}"
-          [ -n "${{ github.event.inputs.kirill_actual_cpl }}" ] && ARGS="$ARGS --kirill-actual-cpl ${{ github.event.inputs.kirill_actual_cpl }}"
-          [ -n "${{ github.event.inputs.kirill_plan_regs }}"  ] && ARGS="$ARGS --kirill-plan-regs ${{ github.event.inputs.kirill_plan_regs }}"
-          [ -n "${{ github.event.inputs.kirill_actual_regs }}" ] && ARGS="$ARGS --kirill-actual-regs ${{ github.event.inputs.kirill_actual_regs }}"
-          python calc_motivation.py $ARGS --out-dir docs/motivation
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            # автозапуск: страница Фила за текущий месяц (+ прошлый месяц 1-го числа)
+            python -u calc_motivation.py --only phil --out-dir docs/motivation
+            if [ "$(date +%d)" = "01" ]; then
+              PREV=$(date -d "$(date +%Y-%m-01) -1 month" +%Y-%m)
+              python -u calc_motivation.py --only phil --month "$PREV" --out-dir docs/motivation
+            fi
+          else
+            ARGS="--only ${IN_ONLY:-phil}"
+            [ -n "$IN_MONTH" ]       && ARGS="$ARGS --month $IN_MONTH"
+            [ -n "$IN_PLAN_CPL" ]    && ARGS="$ARGS --kirill-plan-cpl $IN_PLAN_CPL"
+            [ -n "$IN_ACTUAL_CPL" ]  && ARGS="$ARGS --kirill-actual-cpl $IN_ACTUAL_CPL"
+            [ -n "$IN_PLAN_REGS" ]   && ARGS="$ARGS --kirill-plan-regs $IN_PLAN_REGS"
+            [ -n "$IN_ACTUAL_REGS" ] && ARGS="$ARGS --kirill-actual-regs $IN_ACTUAL_REGS"
+            python -u calc_motivation.py $ARGS --out-dir docs/motivation
+          fi
 
       - name: Commit & push
         run: |
@@ -67,4 +89,5 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add docs/motivation/
           git diff --cached --quiet || git commit -m "chore: update motivation pages [skip ci]"
+          git pull --rebase
           git push
