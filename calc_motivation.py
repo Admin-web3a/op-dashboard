@@ -82,6 +82,11 @@ NON_PAID_SOURCES = _env_set("NON_PAID_SOURCES", "tgc,mailing,unisender,getcourse
 
 # «Рабочий источник» вида «Пуш мг_2907», «Пуш быстрый старт 13_08»
 NON_PAID_WORK_SOURCE_RE = re.compile(r"^\s*пуш", re.IGNORECASE)
+# Месяцы, где засчитываются только перечисленные пуши (сравнение без учёта регистра).
+# Август 2026: «Пуш мг» и «Пуш мг_2907» — июльские пуши, до вступления договорённостей.
+NON_PAID_WORK_SOURCE_ONLY = {
+    "2026-08": {"пуш быстрый старт 13_08"},
+}
 
 # Google Sheets медиаплан (публичный — auth не нужен)
 SHEETS_ID  = "1A6cMBmHVz2-5ctwVeyHy4LMl5vbnucQ4_EGXnIAGmUY"
@@ -256,15 +261,18 @@ def last_touch_source(lead: dict) -> str:
     return (get_field_value(lead, UTM_SOURCE_FIELD)
             or get_field_value(lead, UTM_SOURCE_TRACK_FIELD)).lower()
 
-def non_paid_reason(lead: dict) -> str | None:
+def non_paid_reason(lead: dict, month_str: str) -> str | None:
     """Почему сделка ОП засчитана в non-paid (текст для отчёта) или None."""
     src = last_touch_source(lead)
     if src in NON_PAID_SOURCES:
         return f"utm_source: {src}"
     work = get_field_value(lead, WORK_SOURCE_FIELD)
-    if NON_PAID_WORK_SOURCE_RE.match(work):
-        return f"Рабочий источник: {work}"
-    return None
+    if not NON_PAID_WORK_SOURCE_RE.match(work):
+        return None
+    allowed = NON_PAID_WORK_SOURCE_ONLY.get(month_str)
+    if allowed is not None and work.strip().lower() not in allowed:
+        return None
+    return f"Рабочий источник: {work}"
 
 def calc_non_paid(ts_from: int, ts_to: int) -> tuple[float, list]:
     """Non-paid base: продажи основной воронки ОП в статусе «Успешно реализовано»,
@@ -277,11 +285,12 @@ def calc_non_paid(ts_from: int, ts_to: int) -> tuple[float, list]:
         f"&with=custom_fields&limit=250&page={{page}}",
         key="leads",
     )
+    month_str = datetime.datetime.fromtimestamp(ts_from, MSK).strftime("%Y-%m")
     total, deals = 0.0, []
     for lead in leads:
         if get_field_value(lead, CLOSE_REASON_FIELD) == OP_TEST_REASON:
             continue
-        reason = non_paid_reason(lead)
+        reason = non_paid_reason(lead, month_str)
         if not reason:
             continue
         amount = float(lead.get("price") or 0)
