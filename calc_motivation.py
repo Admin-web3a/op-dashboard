@@ -170,6 +170,7 @@ def fetch_all_pages(path_template: str, key: str = "leads") -> list:
     return results
 
 SUCCESS_STATUS = 142   # «Успешно реализовано» (общий для всех воронок)
+EO_CLOSED_AT_SINCE = int(datetime.datetime(2026, 9, 1, tzinfo=MSK).timestamp())
 
 def fetch_candidate_deals(pipeline_id: int, paid_status_id: int,
                           ts_from: int, ts_to: int) -> list:
@@ -178,7 +179,8 @@ def fetch_candidate_deals(pipeline_id: int, paid_status_id: int,
     1) «Оплачено» — сделка ещё не закрыта. Дата оплаты (нота paid) всегда не раньше
        начала месяца, а updated_at не раньше даты оплаты, поэтому
        updated_at >= начало месяца — безопасный фильтр (верхнюю границу не ставим).
-    2) «Успешно реализовано» — по дате перехода в статус (closed_at) в месяце.
+    2) «Успешно реализовано» — по дате перехода в статус (closed_at) в месяце;
+       для месяцев до EO_CLOSED_AT_SINCE — все закрытые с начала месяца.
     """
     # ВАЖНО: фильтр по статусу — только через filter[statuses][i][pipeline_id/status_id].
     # Обычный filter[status_id] amoCRM молча игнорирует и отдаёт всю воронку.
@@ -189,11 +191,13 @@ def fetch_candidate_deals(pipeline_id: int, paid_status_id: int,
         f"&with=custom_fields&limit=250&page={{page}}",
         key="leads",
     )
+    # До EO_CLOSED_AT_SINCE месяц определяет дата оплаты, а перенос в статус мог быть позже.
+    closed_to = f"&filter[closed_at][to]={ts_to}" if ts_from >= EO_CLOSED_AT_SINCE else ""
     closed = fetch_all_pages(
         f"leads?filter[statuses][0][pipeline_id]={pipeline_id}"
         f"&filter[statuses][0][status_id]={SUCCESS_STATUS}"
         f"&filter[closed_at][from]={ts_from}"
-        f"&filter[closed_at][to]={ts_to}"
+        f"{closed_to}"
         f"&with=custom_fields&limit=250&page={{page}}",
         key="leads",
     )
@@ -328,10 +332,11 @@ def calc_phil(ts_from: int, ts_to: int) -> dict:
         # Дата отнесения к месяцу:
         #   «Успешно реализовано» — дата перехода в статус (closed_at),
         #   «Оплачено»            — дата платёжной ноты.
-        if deal["status_id"] == SUCCESS_STATUS and deal.get("closed_at"):
-            counted_ts = deal["closed_at"]
-        else:
-            counted_ts = paid_ts
+        # Оплаты до EO_CLOSED_AT_SINCE считаются по дате оплаты в любом статусе:
+        # 30.09.2026 августовские оплаты массово перенесли в «Успешно реализовано».
+        by_closed = (deal["status_id"] == SUCCESS_STATUS and deal.get("closed_at")
+                     and paid_ts >= EO_CLOSED_AT_SINCE)
+        counted_ts = deal["closed_at"] if by_closed else paid_ts
         if not (ts_from <= counted_ts <= ts_to):
             continue
 
@@ -346,8 +351,7 @@ def calc_phil(ts_from: int, ts_to: int) -> dict:
             "pipeline":   deal["_pipeline"],
             "amount":     amount,
             "date":       datetime.datetime.fromtimestamp(counted_ts, MSK).strftime("%d.%m.%Y"),
-            "logic":      "перенос в «Успешно реализовано»" if deal["status_id"] == SUCCESS_STATUS
-                          else "дата оплаты",
+            "logic":      "перенос в «Успешно реализовано»" if by_closed else "дата оплаты",
             "utm_source": src,
             "utm_medium": med,
         })
