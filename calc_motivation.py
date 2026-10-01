@@ -81,7 +81,7 @@ OP_TEST_REASON = "ТЕСТ"
 NON_PAID_SOURCES = _env_set("NON_PAID_SOURCES", "tgc,mailing,unisender,getcourse")
 
 # «Рабочий источник» вида «Пуш мг_2907», «Пуш быстрый старт 13_08»
-NON_PAID_WORK_SOURCE_RE = re.compile(r"^\s*пуш", re.IGNORECASE)
+NON_PAID_WORK_SOURCE_RE = re.compile(r"^\s*(пуш|опционы\s*$)", re.IGNORECASE)
 # Месяцы, где засчитываются только перечисленные пуши (сравнение без учёта регистра).
 # Август 2026: «Пуш мг» и «Пуш мг_2907» — июльские пуши, до вступления договорённостей.
 NON_PAID_WORK_SOURCE_ONLY = {
@@ -336,7 +336,8 @@ def calc_phil(ts_from: int, ts_to: int) -> dict:
             if deal["status_id"] == SUCCESS_STATUS and (deal.get("price") or 0) > 0:
                 no_payment.append(deal["id"])
             continue
-        amount, paid_ts = payment
+        note_amount, paid_ts = payment
+        amount = float(deal.get("price") or 0) or note_amount
 
         # Дата отнесения к месяцу:
         #   «Успешно реализовано» — дата перехода в статус (closed_at),
