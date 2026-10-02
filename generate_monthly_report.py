@@ -1064,7 +1064,7 @@ function updateGroupBCards(fromTs, toTs, fromStr, toStr) {
   // Plan-based cards
   const plan = DATA.plans && periodKey ? DATA.plans[periodKey] : null;
   const planMgrs = plan && plan.managers ? Object.values(plan.managers) : [];
-  const planRevTotal = planMgrs.reduce((s, m) => s + (m.revenue||0), 0);
+  const planRevTotal = (plan && plan.revenue_total) || planMgrs.reduce((s, m) => s + (m.revenue||0), 0);
   const planCard  = document.getElementById('sv_plan_card');
   const fcastCard = document.getElementById('sv_forecast_card');
 

@@ -49,5 +49,14 @@
     "sla_yellow_hours": 4,
     "sla_red_hours": 24,
       "revenue_adjustment": -419750
+  },
+  "2026-10": {
+    "revenue_total": 5500000,
+    "managers": {},
+    "aging_yellow_days": 7,
+    "aging_red_days": 14,
+    "sla_yellow_hours": 4,
+    "sla_red_hours": 24,
+    "revenue_adjustment": -553374
   }
 }
