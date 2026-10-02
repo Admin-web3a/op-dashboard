@@ -81,7 +81,11 @@ OP_TEST_REASON = "ТЕСТ"
 NON_PAID_SOURCES = _env_set("NON_PAID_SOURCES", "tgc,mailing,unisender,getcourse")
 
 # «Рабочий источник» вида «Пуш мг_2907», «Пуш быстрый старт 13_08»
-NON_PAID_WORK_SOURCE_RE = re.compile(r"^\s*(пуш|опционы\s*$)", re.IGNORECASE)
+NON_PAID_WORK_SOURCE_RE = re.compile(r"^\s*(пуш|опционы\s*$|defi upgrade\s*$)", re.IGNORECASE)
+# Рабочие источники, которые засчитываются только для сделок, закрытых не раньше даты пуша.
+NON_PAID_WORK_SOURCE_SINCE = {
+    "defi upgrade": int(datetime.datetime(2026, 9, 24, tzinfo=datetime.timezone(datetime.timedelta(hours=3))).timestamp()),  # upgrade_24092026
+}
 # Месяцы, где засчитываются только перечисленные пуши (сравнение без учёта регистра).
 # Август 2026: «Пуш мг» и «Пуш мг_2907» — июльские пуши, до вступления договорённостей.
 NON_PAID_WORK_SOURCE_ONLY = {
@@ -271,6 +275,9 @@ def non_paid_reason(lead: dict, month_str: str) -> str | None:
         return None
     allowed = NON_PAID_WORK_SOURCE_ONLY.get(month_str)
     if allowed is not None and work.strip().lower() not in allowed:
+        return None
+    since = NON_PAID_WORK_SOURCE_SINCE.get(work.strip().lower())
+    if since is not None and (lead.get("closed_at") or 0) < since:
         return None
     return f"Рабочий источник: {work}"
 
