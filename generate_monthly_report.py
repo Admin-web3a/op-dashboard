@@ -67,6 +67,13 @@ STATUS_GROUPS = {
     "Закрыто и не реализовано":  "lost",
 }
 
+# amoCRM system statuses: 142 = won, 143 = lost in every pipeline; names can be renamed.
+SYSTEM_STATUS_GROUPS = {142: "sale", 143: "lost"}
+
+
+def status_group(sid, name):
+    return SYSTEM_STATUS_GROUPS.get(sid) or STATUS_GROUPS.get(name, "active")
+
 # ── API ───────────────────────────────────────────────────────────────────────
 
 def api_get(path):
@@ -89,7 +96,7 @@ def fetch_pipelines():
             statuses[s["id"]] = {
                 "name":     name,
                 "pipeline": p["name"],
-                "group":    STATUS_GROUPS.get(name, "active"),
+                "group":    status_group(s["id"], name),
             }
     return statuses
 
@@ -162,7 +169,7 @@ def fetch_active_leads():
 
     active_sids = [
         s["id"] for s in pipeline_statuses
-        if STATUS_GROUPS.get(s["name"], "active") not in EXCLUDED_GROUPS
+        if status_group(s["id"], s["name"]) not in EXCLUDED_GROUPS
     ]
     if not active_sids:
         print("  No active statuses found — skipping active leads fetch")
