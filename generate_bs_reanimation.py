@@ -139,7 +139,9 @@ def fetch_pipelines():
     data = api_get("leads/pipelines")
     status_map = {}
     pipeline_id = None
-    for p in data.get("_embedded", {}).get("pipelines", []):
+    # Statuses 142/143 are shared by all pipelines; process ours last so its names win.
+    pipelines = sorted(data.get("_embedded", {}).get("pipelines", []), key=lambda p: p["name"] == PIPELINE_NAME)
+    for p in pipelines:
         if p["name"] == PIPELINE_NAME:
             pipeline_id = p["id"]
         for s in p.get("_embedded", {}).get("statuses", []):

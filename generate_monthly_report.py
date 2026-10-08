@@ -67,7 +67,7 @@ STATUS_GROUPS = {
     "Закрыто и не реализовано":  "lost",
 }
 
-# amoCRM system statuses: 142 = won, 143 = lost in every pipeline; names can be renamed.
+# amoCRM system statuses: 142 = won, 143 = lost, shared by every pipeline under per-pipeline names.
 SYSTEM_STATUS_GROUPS = {142: "sale", 143: "lost"}
 
 
@@ -90,7 +90,9 @@ def api_get(path):
 def fetch_pipelines():
     data = api_get("leads/pipelines")
     statuses = {}
-    for p in data.get("_embedded", {}).get("pipelines", []):
+    # Statuses 142/143 are shared by all pipelines; process ours last so its names win.
+    pipelines = sorted(data.get("_embedded", {}).get("pipelines", []), key=lambda p: p["id"] == PIPELINE_ID)
+    for p in pipelines:
         for s in p.get("_embedded", {}).get("statuses", []):
             name = s["name"]
             statuses[s["id"]] = {

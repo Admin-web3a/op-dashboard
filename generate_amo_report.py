@@ -171,7 +171,9 @@ def resolve_source_enum_ids():
 def fetch_pipelines():
     data = api_get("leads/pipelines")
     statuses = {}
-    for p in data.get("_embedded", {}).get("pipelines", []):
+    # Statuses 142/143 are shared by all pipelines; process the main OP pipeline last so its names win.
+    pipelines = sorted(data.get("_embedded", {}).get("pipelines", []), key=lambda p: p["name"] == "Основная воронка ОП")
+    for p in pipelines:
         for s in p.get("_embedded", {}).get("statuses", []):
             name = s["name"]
             statuses[s["id"]] = {
