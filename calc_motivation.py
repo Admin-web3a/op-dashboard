@@ -30,30 +30,33 @@ from pathlib import Path
 # ── .env ───────────────────────────────────────────────────────────────────────
 
 def load_env():
-    env_path = Path(__file__).parent / ".env"
+    env_path = Path(__file__).resolve().parents[3] / ".env"   # корневой .env workspace
     if not env_path.exists():
         return
     for line in env_path.read_text().splitlines():
         line = line.strip()
         if line and not line.startswith("#") and "=" in line:
             k, v = line.split("=", 1)
-            os.environ.setdefault(k.strip(), v.strip())
+            os.environ.setdefault(k.strip(), v.strip().strip("'\""))
 
 load_env()
 
 # ── Константы ─────────────────────────────────────────────────────────────────
 
 DOMAIN = os.environ.get("AMO_DOMAIN", "simmihur.amocrm.ru")
-TOKEN  = os.environ.get("AMO_TOKEN", "")
+# Локально — AmoCRM_token из корневого .env, в GitHub Actions — секрет AMO_TOKEN
+TOKEN  = os.environ.get("AmoCRM_token") or os.environ.get("AMO_TOKEN", "")
 
 # Воронки Entry Offer
 MD_PIPELINE_ID   = 11095182   # Money-Dick
 PR_PIPELINE_ID   = 11218594   # PetRock
+PRV_PIPELINE_ID  = 11376958   # Petrock VSL
 DIAG_PIPELINE_ID = 11121294   # Диагностика (для проверки non-paid)
 
 # Статус «Оплачено» в каждой воронке
-MD_PAID_STATUS = 87315374
-PR_PAID_STATUS = 88019034
+MD_PAID_STATUS  = 87315374
+PR_PAID_STATUS  = 88019034
+PRV_PAID_STATUS = 142         # в Petrock VSL оплата = «Оплачено · доступ выдан» (успешный статус)
 
 # Custom field IDs (UTM)
 UTM_SOURCE_FIELD   = 1323539   # UTM Source (заполняется лендингами Money-Dick / PetRock)
@@ -123,11 +126,11 @@ def get_eo_rate(revenue: float) -> float:
             return rate
     return 0.04
 
-def get_non_paid_rate(eo_revenue: float) -> float:
-    """Non-paid % привязан к тиру выручки Entry Offer."""
-    if eo_revenue >= 5_000_000:
+def get_non_paid_rate(non_paid_revenue: float) -> float:
+    """Тир non-paid определяется выручкой non-paid за месяц (не выручкой EO)."""
+    if non_paid_revenue >= 5_000_000:
         return 0.02
-    if eo_revenue >= 1_000_000:
+    if non_paid_revenue >= 1_000_000:
         return 0.04
     return 0.08
 
@@ -224,20 +227,30 @@ def extract_payment(notes: list) -> tuple[float, int] | None:
     «Petrock event: paid»). Одного transactionId недостаточно: он есть и у неуспешных
     платежей (payment_failed). Дубли нот с одним transactionId схлопываются.
     Одна сделка = одна оплата: если платежей несколько — берём самый ранний.
+
+    Petrock VSL пишет оплату иначе: нота «[petrock-vsl:access_granted_…]» с
+    «CloudPayments transaction: …» и без суммы — сумма тогда 0 (берётся бюджет сделки).
     """
     payments = {}
     for note in notes:
         text = (note.get("params", {}) or {}).get("text", "") or ""
         first_line = text.split("\n", 1)[0]
-        if not re.search(r'event:\s*paid\s*$', first_line):
-            continue
-        tx = re.search(r'transactionId:\s*(\S+)', text)
-        am = re.search(r'amount:\s*([\d.]+)', text)
-        if not (tx and am):
+        if re.search(r'event:\s*paid\s*$', first_line):
+            tx = re.search(r'transactionId:\s*(\S+)', text)
+            am = re.search(r'amount:\s*([\d.]+)', text)
+            if not (tx and am):
+                continue
+            tx_id, amount = tx.group(1), float(am.group(1))
+        elif re.match(r'\[[\w-]+:access_granted_', first_line):
+            tx = re.search(r'CloudPayments transaction:\s*(\S+)', text)
+            if not tx:
+                continue
+            tx_id, amount = tx.group(1), 0.0
+        else:
             continue
         ts = note.get("created_at", 0)
-        if tx.group(1) not in payments or ts < payments[tx.group(1)][1]:
-            payments[tx.group(1)] = (float(am.group(1)), ts)
+        if tx_id not in payments or ts < payments[tx_id][1]:
+            payments[tx_id] = (amount, ts)
     if not payments:
         return None
     return min(payments.values(), key=lambda p: p[1])
@@ -321,6 +334,7 @@ def calc_phil(ts_from: int, ts_to: int) -> dict:
     for pid, sid, name in [
         (MD_PIPELINE_ID, MD_PAID_STATUS, "Money-Dick"),
         (PR_PIPELINE_ID, PR_PAID_STATUS, "PetRock"),
+        (PRV_PIPELINE_ID, PRV_PAID_STATUS, "PetRock VSL"),
     ]:
         deals = fetch_candidate_deals(pid, sid, ts_from, ts_to)
         print(f"    {name}: {len(deals)} кандидатов")
@@ -374,7 +388,7 @@ def calc_phil(ts_from: int, ts_to: int) -> dict:
         })
 
     deal_details.sort(key=lambda d: d["date"][6:] + d["date"][3:5] + d["date"][:2])
-    for name in ("Money-Dick", "PetRock"):
+    for name in ("Money-Dick", "PetRock", "PetRock VSL"):
         print(f"    {name}: {sum(1 for d in deal_details if d['pipeline'] == name)} оплаченных сделок в месяце")
     if no_payment:
         print(f"    ⚠️  «Успешно реализовано» с ценой, но без платёжной ноты (не учтены): {no_payment}")
@@ -382,7 +396,7 @@ def calc_phil(ts_from: int, ts_to: int) -> dict:
     non_paid_rev, np_deals = calc_non_paid(ts_from, ts_to)
 
     eo_rate  = get_eo_rate(eo_revenue)
-    np_rate  = get_non_paid_rate(eo_revenue)
+    np_rate  = get_non_paid_rate(non_paid_rev)
     eo_bonus = eo_revenue * eo_rate
     np_bonus = non_paid_rev * np_rate
     total_bonus = eo_bonus + np_bonus
@@ -644,7 +658,7 @@ def generate_html_phil(month_label: str, month_str: str, phil: dict, output_path
 
 <div class="section">
   <div class="section-header">
-    <div class="section-title">Entry Offer (Money-Dick + PetRock)</div>
+    <div class="section-title">Entry Offer (Money-Dick + PetRock + PetRock VSL)</div>
     <div class="payout-chip">{fmt_rub(eo_bonus)}</div>
   </div>
   <div class="metric-grid">
@@ -681,7 +695,7 @@ def generate_html_phil(month_label: str, month_str: str, phil: dict, output_path
       <div class="metric-value">{fmt_rub(np_rev)}</div>
     </div>
     <div class="metric" style="border-left:3px solid var(--green)">
-      <div class="metric-label">% (привязан к тиру EO)</div>
+      <div class="metric-label">Текущий %</div>
       <div class="metric-value" style="color:var(--green)">{int(np_rate*100)}%</div>
     </div>
     <div class="metric">
@@ -690,10 +704,10 @@ def generate_html_phil(month_label: str, month_str: str, phil: dict, output_path
     </div>
   </div>
   <div class="tiers-table">
-    <table><thead><tr><th>Тир EO</th><th>% non-paid</th></tr></thead><tbody>
-      <tr class="{'active-tier' if eo_rev>=5_000_000 else ''}"><td>5 млн+</td><td>2%</td></tr>
-      <tr class="{'active-tier' if 1_000_000<=eo_rev<5_000_000 else ''}"><td>1 млн – 5 млн</td><td>4%</td></tr>
-      <tr class="{'active-tier' if eo_rev<1_000_000 else ''}"><td>до 1 млн</td><td>8%</td></tr>
+    <table><thead><tr><th>Выручка non-paid за месяц</th><th>% бонуса</th></tr></thead><tbody>
+      <tr class="{'active-tier' if np_rev>=5_000_000 else ''}"><td>5 млн+</td><td>2%</td></tr>
+      <tr class="{'active-tier' if 1_000_000<=np_rev<5_000_000 else ''}"><td>1 млн – 5 млн</td><td>4%</td></tr>
+      <tr class="{'active-tier' if np_rev<1_000_000 else ''}"><td>до 1 млн</td><td>8%</td></tr>
     </tbody></table>
   </div>
   <button class="deals-toggle" onclick="var t=document.getElementById('np-table'); t.style.display=t.style.display==='none'?'block':'none'">
