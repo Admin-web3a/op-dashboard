@@ -107,7 +107,7 @@ NON_PAID_MANUAL_DEALS = {
 # до перехода в «Успешно реализовано» прошло не больше NON_PAID_WINDOW_DAYS.
 # Касание — дата пуша из таблицы Notion, если тег пуша найден в полях сделки или в
 # NON_PAID_MANUAL_DEALS; иначе — последнее изменение поля, по которому сделка non-paid.
-NON_PAID_WINDOW_DAYS  = 45
+NON_PAID_WINDOW_DAYS  = 30
 NON_PAID_WINDOW_SINCE = "2026-11"
 PUSHES_NOTION_DB = "406521f1bd9b809faa2af993eaae5ca3"   # «Аттрибуция маркетинговых пушей»
 NOTION_TOKEN = os.environ.get("NOTION_TOKEN", "")
