@@ -95,6 +95,14 @@ NON_PAID_WORK_SOURCE_ONLY = {
     "2026-08": {"пуш быстрый старт 13_08"},
 }
 
+# Сделки ОП, засчитанные в non-paid вручную: метка пуша есть только в переписке
+# (Wazzup), которую API amoCRM не отдаёт.
+NON_PAID_MANUAL_DEALS = {
+    27252091: "Пуш tg_prebf_27102026",
+    27248099: "Пуш tg_prebf_27102026",
+    27248003: "Пуш tg_prebf_27102026",
+}
+
 # Google Sheets медиаплан (публичный — auth не нужен)
 SHEETS_ID  = "1A6cMBmHVz2-5ctwVeyHy4LMl5vbnucQ4_EGXnIAGmUY"
 SHEETS_GID = 0   # лист «Медиаплан»
@@ -280,6 +288,8 @@ def last_touch_source(lead: dict) -> str:
 
 def non_paid_reason(lead: dict, month_str: str) -> str | None:
     """Почему сделка ОП засчитана в non-paid (текст для отчёта) или None."""
+    if lead["id"] in NON_PAID_MANUAL_DEALS:
+        return f"Вручную: {NON_PAID_MANUAL_DEALS[lead['id']]}"
     src = last_touch_source(lead)
     if src in NON_PAID_SOURCES:
         return f"utm_source: {src}"
