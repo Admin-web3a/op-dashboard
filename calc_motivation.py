@@ -103,6 +103,15 @@ NON_PAID_MANUAL_DEALS = {
     27248003: "Пуш tg_prebf_27102026",
 }
 
+# Окно атрибуции non-paid (с ноября 2026): сделка засчитывается, только если от касания
+# до перехода в «Успешно реализовано» прошло не больше NON_PAID_WINDOW_DAYS.
+# Касание — дата пуша из таблицы Notion, если тег пуша найден в полях сделки или в
+# NON_PAID_MANUAL_DEALS; иначе — последнее изменение поля, по которому сделка non-paid.
+NON_PAID_WINDOW_DAYS  = 45
+NON_PAID_WINDOW_SINCE = "2026-11"
+PUSHES_NOTION_DB = "406521f1bd9b809faa2af993eaae5ca3"   # «Аттрибуция маркетинговых пушей»
+NOTION_TOKEN = os.environ.get("NOTION_TOKEN", "")
+
 # Сделки ОП, исключённые из non-paid вручную, хотя формально подходят под правила
 # (например, касание было за несколько месяцев до продажи и клиента довёл ОП).
 NON_PAID_EXCLUDED_DEALS = {
@@ -315,9 +324,64 @@ def non_paid_reason(lead: dict, month_str: str) -> str | None:
         return None
     return f"Рабочий источник: {work}"
 
-def calc_non_paid(ts_from: int, ts_to: int) -> tuple[float, list]:
+def fetch_pushes() -> dict:
+    """Пуши из Notion: {тег в нижнем регистре: начало дня Due по МСК}."""
+    if not NOTION_TOKEN:
+        print("    ⚠️  NOTION_TOKEN не задан — пуши из Notion не учитываются, окно считается по AMO")
+        return {}
+    pushes, cursor = {}, None
+    while True:
+        body = {"page_size": 100, **({"start_cursor": cursor} if cursor else {})}
+        req = urllib.request.Request(
+            f"https://api.notion.com/v1/databases/{PUSHES_NOTION_DB}/query",
+            data=json.dumps(body).encode(), method="POST",
+            headers={"Authorization": f"Bearer {NOTION_TOKEN}",
+                     "Notion-Version": "2022-06-28", "Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=25) as r:
+            data = json.loads(r.read())
+        for page in data["results"]:
+            props = page["properties"]
+            tag = "".join(t["plain_text"] for t in props["Tag"]["title"]).replace("\\", "").strip().lower()
+            due = (props["Due"].get("date") or {}).get("start")
+            if tag and due:
+                day = datetime.date.fromisoformat(due[:10])
+                pushes[tag] = int(datetime.datetime(day.year, day.month, day.day, tzinfo=MSK).timestamp())
+        if not data.get("has_more"):
+            return pushes
+        cursor = data["next_cursor"]
+
+def find_push_tag(lead: dict, pushes: dict) -> str | None:
+    """Самый поздний пуш из Notion (не позже закрытия сделки), тег которого есть
+    в полях сделки или в ручном списке."""
+    texts = [NON_PAID_MANUAL_DEALS.get(lead["id"], "")]
+    for cf in lead.get("custom_fields_values") or []:
+        texts += [str(v.get("value") or "") for v in cf.get("values") or []]
+    text = " ".join(texts).lower()
+    found = [t for t, ts in pushes.items() if t in text and ts <= lead["closed_at"]]
+    return max(found, key=pushes.get, default=None)
+
+def touch_field(lead: dict) -> int:
+    """Поле, по которому сделка попала в non-paid: UTM последнего касания или «Рабочий источник»."""
+    if last_touch_source(lead) in NON_PAID_SOURCES:
+        for fid in (UTM_SOURCE_ALL_FIELD, UTM_SOURCE_FIELD, UTM_SOURCE_TRACK_FIELD):
+            if get_field_value(lead, fid):
+                return fid
+    return WORK_SOURCE_FIELD
+
+def field_changed_at(lead_id: int, field_id: int) -> int | None:
+    events = fetch_all_pages(
+        f"events?filter[entity]=lead&filter[entity_id]={lead_id}"
+        f"&filter[type]=custom_field_{field_id}_value_changed&limit=100&page={{page}}",
+        key="events",
+    )
+    return max((e["created_at"] for e in events), default=None)
+
+def calc_non_paid(ts_from: int, ts_to: int) -> tuple[float, list, list]:
     """Non-paid base: продажи основной воронки ОП в статусе «Успешно реализовано»,
-    перешедшие в статус в этом месяце, с non-paid последним касанием. Выручка — бюджет сделки."""
+    перешедшие в статус в этом месяце, с non-paid последним касанием. Выручка — бюджет сделки.
+    С NON_PAID_WINDOW_SINCE — только в окне NON_PAID_WINDOW_DAYS от касания; сделки
+    за пределами окна возвращаются отдельным списком."""
     leads = fetch_all_pages(
         f"leads?filter[statuses][0][pipeline_id]={OP_PIPELINE_ID}"
         f"&filter[statuses][0][status_id]={SUCCESS_STATUS}"
@@ -327,25 +391,52 @@ def calc_non_paid(ts_from: int, ts_to: int) -> tuple[float, list]:
         key="leads",
     )
     month_str = datetime.datetime.fromtimestamp(ts_from, MSK).strftime("%Y-%m")
-    total, deals = 0.0, []
+    windowed = month_str >= NON_PAID_WINDOW_SINCE
+    pushes = fetch_pushes() if windowed else {}
+    if windowed:
+        print(f"    Пушей в Notion: {len(pushes)}")
+    fmt = lambda ts: datetime.datetime.fromtimestamp(ts, MSK).strftime("%d.%m.%Y")
+    total, deals, expired = 0.0, [], []
     for lead in leads:
         if get_field_value(lead, CLOSE_REASON_FIELD) == OP_TEST_REASON:
             continue
-        reason = non_paid_reason(lead, month_str)
-        if not reason:
+        if lead["id"] in NON_PAID_EXCLUDED_DEALS:
             continue
-        amount = float(lead.get("price") or 0)
-        total += amount
-        deals.append({
+        reason = non_paid_reason(lead, month_str)
+        tag = find_push_tag(lead, pushes) if windowed else None
+        if not (reason or tag):
+            continue
+        reason = reason or f"Пуш из Notion: {tag}"
+        days = None
+        if windowed:
+            if tag:
+                touch_ts, basis = pushes[tag], f"пуш {tag}"
+            elif lead["id"] in NON_PAID_MANUAL_DEALS:
+                touch_ts = None           # ручное решение — без окна
+            else:
+                touch_ts = field_changed_at(lead["id"], touch_field(lead)) or lead["created_at"]
+                basis = "касание в AMO"
+            if touch_ts is not None:
+                days = (lead["closed_at"] - touch_ts) // 86400
+                reason += f" · {basis} {fmt(touch_ts)}, {days} дн."
+        deal = {
             "id":     lead["id"],
             "name":   lead["name"],
-            "amount": amount,
-            "date":   datetime.datetime.fromtimestamp(lead["closed_at"], MSK).strftime("%d.%m.%Y"),
+            "amount": float(lead.get("price") or 0),
+            "date":   fmt(lead["closed_at"]),
             "reason": reason,
-        })
-    deals.sort(key=lambda d: d["date"][6:] + d["date"][3:5] + d["date"][:2])
-    print(f"    ОП: {len(leads)} продаж в месяце, из них non-paid: {len(deals)}")
-    return total, deals
+        }
+        if days is not None and days > NON_PAID_WINDOW_DAYS:
+            expired.append(deal)
+            continue
+        total += deal["amount"]
+        deals.append(deal)
+    by_date = lambda d: d["date"][6:] + d["date"][3:5] + d["date"][:2]
+    deals.sort(key=by_date)
+    expired.sort(key=by_date)
+    print(f"    ОП: {len(leads)} продаж в месяце, из них non-paid: {len(deals)}"
+          + (f", вне окна {NON_PAID_WINDOW_DAYS} дн.: {len(expired)}" if windowed else ""))
+    return total, deals, expired
 
 # ── Расчёт мотивации Фила ──────────────────────────────────────────────────────
 
@@ -414,7 +505,7 @@ def calc_phil(ts_from: int, ts_to: int) -> dict:
     if no_payment:
         print(f"    ⚠️  «Успешно реализовано» с ценой, но без платёжной ноты (не учтены): {no_payment}")
 
-    non_paid_rev, np_deals = calc_non_paid(ts_from, ts_to)
+    non_paid_rev, np_deals, np_expired = calc_non_paid(ts_from, ts_to)
 
     eo_rate  = get_eo_rate(eo_revenue)
     np_rate  = get_non_paid_rate(non_paid_rev)
@@ -434,6 +525,7 @@ def calc_phil(ts_from: int, ts_to: int) -> dict:
         "deal_count":     len(deal_details),
         "deals":          deal_details,
         "np_deals":       np_deals,
+        "np_expired":     np_expired,
     }
 
 # ── Расчёт мотивации Кирилла ───────────────────────────────────────────────────
@@ -664,6 +756,28 @@ def generate_html_phil(month_label: str, month_str: str, phil: dict, output_path
             f"<td style=\"color:var(--muted)\">{d['reason']}</td></tr>\n"
         )
 
+    expired = phil.get("np_expired", [])
+    expired_block = ""
+    if expired:
+        exp_rows = "".join(
+            f"<tr><td>{d['date']}</td>"
+            f"<td><a href=\"https://{DOMAIN}/leads/detail/{d['id']}\" target=\"_blank\" "
+            f"style=\"color:var(--text);text-decoration:none\">{d['name']}</a></td>"
+            f"<td>{fmt_rub(d['amount'])}</td>"
+            f"<td style=\"color:var(--muted)\">{d['reason']}</td></tr>\n"
+            for d in expired
+        )
+        expired_block = f"""
+  <button class="deals-toggle" onclick="var t=document.getElementById('np-expired'); t.style.display=t.style.display==='none'?'block':'none'">
+    ▾ Не засчитаны: больше {NON_PAID_WINDOW_DAYS} дней от касания ({len(expired)}, {fmt_rub(sum(d['amount'] for d in expired))})
+  </button>
+  <div id="np-expired" class="deals-list">
+    <table style="margin-top:14px">
+      <thead><tr><th>Дата УР</th><th>Сделка ОП</th><th>Бюджет</th><th>Касание</th></tr></thead>
+      <tbody>{exp_rows}</tbody>
+    </table>
+  </div>"""
+
     body = f"""
 <div class="hero">
   <div>
@@ -739,7 +853,7 @@ def generate_html_phil(month_label: str, month_str: str, phil: dict, output_path
       <thead><tr><th>Дата УР</th><th>Сделка ОП</th><th>Бюджет</th><th>Засчитана по</th></tr></thead>
       <tbody>{np_rows or "<tr><td colspan='4' style='color:var(--muted);text-align:center;padding:16px'>Сделок non-paid в этом месяце нет</td></tr>"}</tbody>
     </table>
-  </div>
+  </div>{expired_block}
 </div>
 
 <div class="section">
