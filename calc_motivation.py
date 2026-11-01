@@ -103,6 +103,14 @@ NON_PAID_MANUAL_DEALS = {
     27248003: "Пуш tg_prebf_27102026",
 }
 
+# Сделки ОП, исключённые из non-paid вручную, хотя формально подходят под правила
+# (например, касание было за несколько месяцев до продажи и клиента довёл ОП).
+NON_PAID_EXCLUDED_DEALS = {
+    26600035,   # utm tgc bday2026 (07.2026), УР 01.10 — заслуга ОП
+    25607043,   # utm tgc bday2026 (02.2026), УР 02.10 — заслуга ОП
+    26704859,   # «Пуш быстрый старт 13_08», УР 13.10 — заслуга ОП
+}
+
 # Google Sheets медиаплан (публичный — auth не нужен)
 SHEETS_ID  = "1A6cMBmHVz2-5ctwVeyHy4LMl5vbnucQ4_EGXnIAGmUY"
 SHEETS_GID = 0   # лист «Медиаплан»
@@ -288,6 +296,8 @@ def last_touch_source(lead: dict) -> str:
 
 def non_paid_reason(lead: dict, month_str: str) -> str | None:
     """Почему сделка ОП засчитана в non-paid (текст для отчёта) или None."""
+    if lead["id"] in NON_PAID_EXCLUDED_DEALS:
+        return None
     if lead["id"] in NON_PAID_MANUAL_DEALS:
         return f"Вручную: {NON_PAID_MANUAL_DEALS[lead['id']]}"
     src = last_touch_source(lead)
